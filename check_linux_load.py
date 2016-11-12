@@ -1,0 +1,62 @@
+#!/usr/bin/env python
+
+import logging
+import argparse
+import nagiosplugin
+import subprocess
+
+_log = logging.getLogger('nagiosplugin')
+
+
+class Load(nagiosplugin.Resource):
+    def __init__(self, per_cpu=False):
+        self.per_cpu = per_cpu
+
+    @staticmethod
+    def cpu_count():
+        _log.info('Counting CPUs with "nproc"')
+        cpu_count = int(subprocess.check_output(['nproc']))
+        _log.debug('Found %d CPUs in total', cpu_count)
+        return cpu_count
+
+    def probe(self):
+        _log.info('Reading load averages from /proc/loadavg')
+        with open('/proc/loadavg') as file:
+            load_avgs = file.readline().split(' ')[0:3]
+        _log.debug('Raw load averages are %s', load_avgs)
+
+        cpu_count = self.cpu_count() if self.per_cpu else 1
+        load_avgs = [float(load_avg) / cpu_count for load_avg in load_avgs]
+
+        for index, period in enumerate([1, 5, 15]):
+            yield nagiosplugin.Metric('load%d' % period, load_avgs[index], min=0, context='load')
+
+
+class LoadSummary(nagiosplugin.Summary):
+    def __init__(self, divide_by_cpu_count):
+        self.divide_by_cpu_count = divide_by_cpu_count
+
+    def ok(self, results):
+        qualifier = 'per cpu ' if self.divide_by_cpu_count else ''
+        return 'loadavg %sis %s' % (
+            qualifier, ', '.join(str(results[index].metric) for index in ['load1', 'load5', 'load15']))
+
+
+def main():
+    argp = argparse.ArgumentParser(description=__doc__)
+    argp.add_argument('-w', '--warning', metavar='RANGE', default='', help='Return warning if load is outside RANGE')
+    argp.add_argument('-c', '--critical', metavar='RANGE', default='', help='Return critical if load is outside RANGE')
+    argp.add_argument('-d', '--per-cpu', action='store_true', default=False,
+                      help='Show load averages per CPU by dividing averages through CPU count.')
+    argp.add_argument('-v', '--verbose', action='count', default=0,
+                      help='Increase output verbosity (use up to 3 times)')
+    args = argp.parse_args()
+
+    check = nagiosplugin.Check(Load(args.per_cpu),
+                               nagiosplugin.ScalarContext('load', args.warning, args.critical),
+                               LoadSummary(args.per_cpu))
+    check.main(verbose=args.verbose)
+
+
+if __name__ == '__main__':
+    main()
