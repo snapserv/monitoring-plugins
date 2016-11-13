@@ -3,6 +3,7 @@
 import logging
 import argparse
 import nagiosplugin
+import math
 from datetime import timedelta
 
 _log = logging.getLogger('nagiosplugin')
@@ -12,28 +13,52 @@ class Uptime(nagiosplugin.Resource):
     def probe(self):
         _log.info('Reading system uptime from /proc/uptime')
         with open('/proc/uptime') as file:
-            raw_uptime = int(float(file.readline().split(' ')[0]))
+            raw_uptime = file.readline().split(' ')[0]
         _log.debug('Raw system uptime is %s', raw_uptime)
 
-        yield nagiosplugin.Metric('uptime', raw_uptime, context='uptime')
+        uptime_seconds = round(float(raw_uptime))
+        yield nagiosplugin.Metric('uptime', uptime_seconds, min=0, uom='s', context='uptime')
 
 
-class UptimeSummary(nagiosplugin.Summary):
-    def ok(self, results):
-        return 'uptime is %s' % str(timedelta(seconds=float(str(results['uptime'].metric))))
+class UptimeContext(nagiosplugin.Context):
+    def __init__(self, warning=None, critical=None):
+        super().__init__('uptime', fmt_metric=self.fmt_metric)
+        self.warning = nagiosplugin.Range(warning)
+        self.critical = nagiosplugin.Range(critical)
+
+    @staticmethod
+    def fmt_metric(metric, context):
+        return 'uptime is %s' % timedelta(seconds=metric.value)
+
+    @staticmethod
+    def fmt_range(range):
+        if range.end == math.inf:
+            return 'less than %d minutes' % range.start
+        else:
+            return 'outside range of %s to %s minutes' % (range.start, range.end)
+
+    def evaluate(self, metric, resource):
+        uptime_minutes = math.floor(metric.value / 60)
+        if not self.critical.match(uptime_minutes):
+            return self.result_cls(nagiosplugin.Critical, self.fmt_range(self.critical), metric)
+        elif not self.warning.match(uptime_minutes):
+            return self.result_cls(nagiosplugin.Warn, self.fmt_range(self.warning), metric)
+        else:
+            return self.result_cls(nagiosplugin.Ok, None, metric)
 
 
+@nagiosplugin.guarded()
 def main():
     argp = argparse.ArgumentParser(description=__doc__)
-    argp.add_argument('-w', '--warning', metavar='RANGE', default='', help='Return warning if uptime is outside RANGE')
+    argp.add_argument('-w', '--warning', metavar='RANGE', default='',
+                      help='Return warning if uptime is outside RANGE (specified in minutes)')
     argp.add_argument('-c', '--critical', metavar='RANGE', default='',
-                      help='Return critical if uptime is outside RANGE')
+                      help='Return critical if uptime is outside RANGE (specified in minutes)')
     argp.add_argument('-v', '--verbose', action='count', default=0,
                       help='Increase output verbosity (use up to 3 times)')
     args = argp.parse_args()
 
-    check = nagiosplugin.Check(Uptime(), nagiosplugin.ScalarContext('uptime', args.warning, args.critical),
-                               UptimeSummary())
+    check = nagiosplugin.Check(Uptime(), UptimeContext(args.warning, args.critical))
     check.main(verbose=args.verbose)
 
 
