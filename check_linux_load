@@ -52,8 +52,7 @@ def main():
                       help='Increase output verbosity (use up to 3 times)')
     args = argp.parse_args()
 
-    check = nagiosplugin.Check(Load(args.per_cpu),
-                               nagiosplugin.ScalarContext('load', args.warning, args.critical),
+    check = nagiosplugin.Check(Load(args.per_cpu), nagiosplugin.ScalarContext('load', args.warning, args.critical),
                                LoadSummary(args.per_cpu))
     check.main(verbose=args.verbose)
 
