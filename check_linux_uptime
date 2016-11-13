@@ -32,7 +32,7 @@ class UptimeContext(nagiosplugin.Context):
 
     @staticmethod
     def fmt_range(range):
-        if range.end == math.inf:
+        if range.end == float('inf'):
             return 'less than %d minutes' % range.start
         else:
             return 'outside range of %s to %s minutes' % (range.start, range.end)
