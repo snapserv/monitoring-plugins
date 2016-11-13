@@ -1,0 +1,96 @@
+#!/usr/bin/env python
+
+import logging
+import argparse
+import nagiosplugin
+from shared.mikrotik import MikrotikApiResource
+
+_log = logging.getLogger('nagiosplugin')
+
+
+class BgpPeer(MikrotikApiResource):
+    def __init__(self, peer_name, api_host, api_user, api_pass, api_use_ssl=False):
+        super(BgpPeer, self).__init__(api_host, api_user, api_pass, api_use_ssl)
+        self.peer_name = peer_name
+
+    def fetch_peer_details(self):
+        peers = self.api_client.talk(['/routing/bgp/peer/getall'])
+
+        for peer in peers.values():
+            if peer['name'] == self.peer_name:
+                return peer
+        return None
+
+    def probe(self):
+        peer = self.fetch_peer_details()
+
+        yield nagiosplugin.Metric('state', peer['state'].lower())
+
+        if peer['established'].lower() == 'true':
+            yield nagiosplugin.Metric('uptime', peer['uptime'])
+            yield nagiosplugin.Metric('prefix_count', int(peer['prefix-count']), min=0)
+            yield nagiosplugin.Metric('updates_sent', int(peer['updates-sent']), min=0)
+            yield nagiosplugin.Metric('updates_received', int(peer['updates-received']), min=0)
+            yield nagiosplugin.Metric('withdrawn_sent', int(peer['withdrawn-sent']), min=0)
+            yield nagiosplugin.Metric('withdrawn_received', int(peer['withdrawn-received']), min=0)
+
+            if 'max-prefix-limit' in peer:
+                max_prefix_limit_usage = round(float(peer['prefix-count']) / float(peer['max-prefix-limit']) * 100)
+                yield nagiosplugin.Metric('max_prefix_limit_usage', max_prefix_limit_usage, min=0, max=100, uom='%')
+
+
+class BgpPeerStateContext(nagiosplugin.Context):
+    def __init__(self, is_critical):
+        super(BgpPeerStateContext, self).__init__('state', fmt_metric=self.fmt_metric)
+        self.is_critical = is_critical
+
+    @staticmethod
+    def fmt_metric(metric, context):
+        return 'session has state %s' % str(metric.value).upper()
+
+    def evaluate(self, metric, resource):
+        if metric.value != 'established':
+            return self.result_cls(nagiosplugin.Critical if self.is_critical else nagiosplugin.Warn, '', metric)
+        else:
+            return self.result_cls(nagiosplugin.Ok, None, metric)
+
+
+class BgpPeerSummary(nagiosplugin.Summary):
+    def ok(self, results):
+        if results['state'].metric.value == 'established':
+            return 'session is established since %s' % results['uptime'].metric.value
+        else:
+            return 'session has state %s' % results['state'].metric.value
+
+
+@nagiosplugin.guarded()
+def main():
+    argp = argparse.ArgumentParser(description=__doc__)
+    argp.add_argument('--host', required=True, help='Specifies the FQDN of the Mikrotik router.')
+    argp.add_argument('--username', required=True, help='Specifies the username for the Mikrotik API.')
+    argp.add_argument('--password', required=True, help='Specifies the password for the Mikrotik API.')
+    argp.add_argument('--use-ssl', action='store_true', default=False,
+                      help='Enables the use of the SSL-encrypted Mikrotik API.')
+    argp.add_argument('-c', '--critical', action='store_true', default=False,
+                      help='Return criticals instead of warnings when a BGP session is not established.')
+    argp.add_argument('-p', '--peer', metavar='NAME', required=True,
+                      help='Specifies the name of the BGP peer for which the checks are being executed.')
+    argp.add_argument('-l', '--max-pref-limit-usage', metavar='RANGE', default='',
+                      help='Return warning when usage of max-pref-limit in percent is outside of RANGE.')
+    argp.add_argument('-v', '--verbose', action='count', default=0,
+                      help='Increase output verbosity (use up to 3 times)')
+    args = argp.parse_args()
+
+    check = nagiosplugin.Check(BgpPeer(args.peer, args.host, args.username, args.password, args.use_ssl),
+                               BgpPeerStateContext(args.critical), nagiosplugin.Context('uptime'),
+                               nagiosplugin.ScalarContext('prefix_count'), nagiosplugin.ScalarContext('updates_sent'),
+                               nagiosplugin.ScalarContext('updates_received'),
+                               nagiosplugin.ScalarContext('withdrawn_sent'),
+                               nagiosplugin.ScalarContext('withdrawn_received'),
+                               nagiosplugin.ScalarContext('max_prefix_limit_usage', args.max_pref_limit_usage),
+                               BgpPeerSummary())
+    check.main(verbose=args.verbose)
+
+
+if __name__ == '__main__':
+    main()
