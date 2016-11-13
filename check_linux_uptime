@@ -21,8 +21,8 @@ class Uptime(nagiosplugin.Resource):
 
 
 class UptimeContext(nagiosplugin.Context):
-    def __init__(self, warning=None, critical=None):
-        super().__init__('uptime', fmt_metric=self.fmt_metric)
+    def __init__(self, name, warning=None, critical=None):
+        super(UptimeContext, self).__init__('uptime', fmt_metric=self.fmt_metric)
         self.warning = nagiosplugin.Range(warning)
         self.critical = nagiosplugin.Range(critical)
 
