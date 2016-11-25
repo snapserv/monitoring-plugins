@@ -23,6 +23,9 @@ class BgpPeer(MikrotikApiResource):
 
     def probe(self):
         peer = self.fetch_peer_details()
+        if peer['disabled'].lower() == 'true':
+            peer['state'] = 'disabled'
+            peer['established'] = 'false'
 
         yield nagiosplugin.Metric('state', peer['state'].lower())
 
@@ -49,10 +52,12 @@ class BgpPeerStateContext(nagiosplugin.Context):
         return 'session has state %s' % str(metric.value).upper()
 
     def evaluate(self, metric, resource):
-        if metric.value != 'established':
+        if metric.value not in ['established', 'disabled']:
             return self.result_cls(nagiosplugin.Critical if self.is_critical else nagiosplugin.Warn, '', metric)
-        else:
+        elif metric.value == 'established':
             return self.result_cls(nagiosplugin.Ok, None, metric)
+        else:
+            return self.result_cls(nagiosplugin.Warn, '', metric)
 
 
 class BgpPeerSummary(nagiosplugin.Summary):
