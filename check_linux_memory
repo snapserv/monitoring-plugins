@@ -1,0 +1,91 @@
+#!/usr/bin/env python
+
+import logging
+import argparse
+import nagiosplugin
+import re
+
+_log = logging.getLogger('nagiosplugin')
+
+
+class Memory(nagiosplugin.Resource):
+    def __init__(self, cache_as_free=False):
+        self.cache_as_free = cache_as_free
+
+    @staticmethod
+    def get_statistics():
+        _log.info('Gathering system memory information from "/proc/meminfo"')
+        re_parser = re.compile(r'^(?P<key>\S*):\s*(?P<value>\d*)\s*kB')
+        result = dict()
+
+        for line in open('/proc/meminfo'):
+            match = re_parser.match(line)
+            if match:
+                key, value = match.groups(['key', 'value'])
+                _log.debug('Parsed meminfo line: %s => %s' % (key, value))
+                result[key] = int(value)
+            else:
+                _log.debug('Ignored unparsable line: ' + line.strip())
+
+        return result
+
+    def probe(self):
+        stats = self.get_statistics()
+        free_memory = float(stats['MemFree'] + (stats['Cached'] if self.cache_as_free else 0))
+        free_percentage = round(free_memory / stats['MemTotal'] * 100, 2)
+
+        return [nagiosplugin.Metric('free_percentage', free_percentage, min=0, max=100, uom='%'),
+                nagiosplugin.Metric('active', stats['Active'], min=0, uom='kiB'),
+                nagiosplugin.Metric('inactive', stats['Inactive'], min=0, uom='kiB'),
+                nagiosplugin.Metric('buffers', stats['Buffers'], min=0, uom='kiB'),
+                nagiosplugin.Metric('cached', stats['Cached'], min=0, uom='kiB'),
+                nagiosplugin.Metric('total', stats['MemTotal'], min=0, uom='kiB')]
+
+
+class MemorySummary(nagiosplugin.Summary):
+    @staticmethod
+    def divide_size(size):
+        threshold = 100
+        if size > pow(1024, 3) * threshold:
+            return [round(size / pow(1024, 3), 2), 'T']
+        elif size > pow(1024, 2) * threshold:
+            return [round(size / pow(1024, 2), 2), 'G']
+        elif size > pow(1024, 1) * threshold:
+            return [round(size / pow(1024, 1), 2), 'M']
+        else:
+            return [int(size), 'K']
+
+    def ok(self, results):
+        args = [results['free_percentage'].metric.value]
+        args.extend(self.divide_size(results['total'].metric.value))
+        args.extend(self.divide_size(results['active'].metric.value))
+        args.extend(self.divide_size(results['inactive'].metric.value))
+        args.extend(self.divide_size(results['buffers'].metric.value))
+        args.extend(self.divide_size(results['cached'].metric.value))
+
+        return '%d%% Free - Total:%d%s Active:%d%s Inactive:%d%s Buffers:%d%s Cached:%d%s' % tuple(args)
+
+
+@nagiosplugin.guarded()
+def main():
+    argp = argparse.ArgumentParser(description=__doc__)
+    argp.add_argument('-w', '--warning', metavar='RANGE', default='',
+                      help='Return warning if free memory percentage is outside RANGE')
+    argp.add_argument('-c', '--critical', metavar='RANGE', default='',
+                      help='Return critical if free memory percentage is outside RANGE')
+    argp.add_argument('-f', '--cache-as-free', action='store_true', default=False,
+                      help='Count cache memory as free/unused memory when calculating percentage values.')
+    argp.add_argument('-v', '--verbose', action='count', default=0,
+                      help='Increase output verbosity (use up to 3 times)')
+    args = argp.parse_args()
+
+    check = nagiosplugin.Check(Memory(args.cache_as_free),
+                               nagiosplugin.ScalarContext('free_percentage', args.warning, args.critical),
+                               nagiosplugin.ScalarContext('active'), nagiosplugin.ScalarContext('inactive'),
+                               nagiosplugin.ScalarContext('buffers'), nagiosplugin.ScalarContext('cached'),
+                               nagiosplugin.Context('total'), MemorySummary())
+    check.main(verbose=args.verbose)
+
+
+if __name__ == '__main__':
+    main()
