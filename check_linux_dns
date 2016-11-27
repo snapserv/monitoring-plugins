@@ -33,7 +33,7 @@ class Dns(nagiosplugin.Resource):
                 _log.debug('Manually raising timeout exception, as dnspython only supports whole seconds.')
                 raise dns.exception.Timeout()
 
-            return nagiosplugin.Metric('response_time', response_time, min=0)
+            return nagiosplugin.Metric('response_time', response_time, min=0, uom='s')
         except dns.exception.DNSException as exception:
             _log.info('Query has failed with an exception: ' + str(exception))
             return nagiosplugin.Metric('query_exception', exception)
