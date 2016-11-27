@@ -35,11 +35,11 @@ class Memory(nagiosplugin.Resource):
         free_percentage = round(free_memory / stats['MemTotal'] * 100, 2)
 
         return [nagiosplugin.Metric('free_percentage', free_percentage, min=0, max=100, uom='%'),
-                nagiosplugin.Metric('active', stats['Active'], min=0, uom='kiB'),
-                nagiosplugin.Metric('inactive', stats['Inactive'], min=0, uom='kiB'),
-                nagiosplugin.Metric('buffers', stats['Buffers'], min=0, uom='kiB'),
-                nagiosplugin.Metric('cached', stats['Cached'], min=0, uom='kiB'),
-                nagiosplugin.Metric('total', stats['MemTotal'], min=0, uom='kiB')]
+                nagiosplugin.Metric('active', stats['Active'], min=0, uom='KB'),
+                nagiosplugin.Metric('inactive', stats['Inactive'], min=0, uom='KB'),
+                nagiosplugin.Metric('buffers', stats['Buffers'], min=0, uom='KB'),
+                nagiosplugin.Metric('cached', stats['Cached'], min=0, uom='KB'),
+                nagiosplugin.Metric('total', stats['MemTotal'], min=0, uom='KB')]
 
 
 class MemorySummary(nagiosplugin.Summary):
