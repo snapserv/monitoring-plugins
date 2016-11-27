@@ -32,10 +32,10 @@ class BgpPeer(MikrotikApiResource):
         if peer['established'].lower() == 'true':
             yield nagiosplugin.Metric('uptime', peer['uptime'])
             yield nagiosplugin.Metric('prefix_count', int(peer['prefix-count']), min=0)
-            yield nagiosplugin.Metric('updates_sent', int(peer['updates-sent']), min=0)
-            yield nagiosplugin.Metric('updates_received', int(peer['updates-received']), min=0)
-            yield nagiosplugin.Metric('withdrawn_sent', int(peer['withdrawn-sent']), min=0)
-            yield nagiosplugin.Metric('withdrawn_received', int(peer['withdrawn-received']), min=0)
+            yield nagiosplugin.Metric('updates_sent', int(peer['updates-sent']), min=0, uom='c')
+            yield nagiosplugin.Metric('updates_received', int(peer['updates-received']), min=0, uom='c')
+            yield nagiosplugin.Metric('withdrawn_sent', int(peer['withdrawn-sent']), min=0, uom='c')
+            yield nagiosplugin.Metric('withdrawn_received', int(peer['withdrawn-received']), min=0, uom='c')
 
             if 'max-prefix-limit' in peer:
                 max_prefix_limit_usage = round(float(peer['prefix-count']) / float(peer['max-prefix-limit']) * 100)
