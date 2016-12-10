@@ -2,3 +2,5 @@ nagiosplugin==1.2.4
 six==1.10.0
 tikapy==0.2.1
 dnspython==1.15.0
+defusedxml==0.4.1
+enum34==1.1.6
