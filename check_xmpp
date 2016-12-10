@@ -11,7 +11,7 @@ from select import select
 from datetime import datetime
 from xml.sax.handler import ContentHandler, feature_namespaces
 from defusedxml.sax import make_parser
-from shared.common import DaysValidContext, ExceptionContext
+from shared.common import DaysValidContext, ExceptionContext, CommaSeparatedSummary
 
 _log = logging.getLogger('nagiosplugin')
 
@@ -310,11 +310,6 @@ class Xmpp(nagiosplugin.Resource):
         yield nagiosplugin.Metric('certificate_days_left', self.certificate_days_left, uom='d')
 
 
-class XmppSummary(nagiosplugin.Summary):
-    def ok(self, results):
-        return ', '.join([str(result) for result in results])
-
-
 def parse_arguments(excluded_kwargs=()):
     argp = argparse.ArgumentParser(description=__doc__)
 
@@ -324,7 +319,7 @@ def parse_arguments(excluded_kwargs=()):
                       help='Optionally specifies the XMPP port, defaults to 5222 (C2S) / 5269 (S2S).')
     argp.add_argument('-H', '--host', required=True, help='Specifies the XMPP host which should be used.')
     argp.add_argument('--starttls', action='store_true', help='Whether to use StartTLS when connecting.')
-    argp.add_argument('--no-check-certificates', dest='check_certificates', action='store_false',
+    argp.add_argument('--no-check-certificates', dest='check_certificates', default=True, action='store_false',
                       help='Do not check whether the XMPP server certificate is valid.')
     argp.add_argument('-w', '--warning', metavar='SECONDS', default='',
                       help='Return warning if connection setup takes longer than SECONDS')
@@ -357,9 +352,9 @@ def main():
     check = nagiosplugin.Check(Xmpp(**kwargs), nagiosplugin.ScalarContext('time', args.warning, args.critical,
                                                                           fmt_metric='Request took {value}{uom}'),
                                DaysValidContext('certificate_days_left', warning_days=args.warning_days,
-                                                critical_days=args.critical_days,
+                                                critical_days=args.critical_days, check_lifetime=args.check_certificates,
                                                 fmt_metric='Certificate valid for {value} days'),
-                               ExceptionContext('exception'), XmppSummary())
+                               ExceptionContext('exception'), CommaSeparatedSummary())
     check.main(verbose=args.verbose)
 
 
