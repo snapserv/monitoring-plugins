@@ -3,6 +3,7 @@
 import logging
 import argparse
 import nagiosplugin
+
 from shared.mikrotik import MikrotikApiResource
 
 _log = logging.getLogger('nagiosplugin')

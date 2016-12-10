@@ -11,7 +11,6 @@ from select import select
 from datetime import datetime
 from xml.sax.handler import ContentHandler, feature_namespaces
 from defusedxml.sax import make_parser
-
 from shared.common import DaysValidContext, ExceptionContext
 
 _log = logging.getLogger('nagiosplugin')
