@@ -4,6 +4,7 @@ import logging
 import argparse
 import socket
 import ssl
+import os
 import nagiosplugin
 
 from enum import Enum
@@ -138,14 +139,16 @@ class XmppResponseHandler(object, ContentHandler):
 
 
 class Xmpp(nagiosplugin.Resource):
-    def __init__(self, server, port, host, use_s2s, use_ipv6, starttls, check_certificates):
+    def __init__(self, server, port, host, use_s2s, use_ipv6, starttls, ca_roots, check_certificates):
         self.server = server
         self.port = port if port else (5269 if use_s2s else 5222)
         self.host = host
         self.use_s2s = use_s2s
         self.use_ipv6 = use_ipv6
         self.starttls = starttls
+        self.ca_roots = ca_roots
         self.check_certificates = check_certificates
+
         self.parser = None
         self.content_handler = None
         self.socket = None
@@ -236,14 +239,24 @@ class Xmpp(nagiosplugin.Resource):
             context.verify_mode = ssl.CERT_NONE
         else:
             context.verify_mode = ssl.CERT_REQUIRED
-            context.load_default_certs()
+            if self.ca_roots:
+                if os.path.isfile(self.ca_roots):
+                    kwargs = {'cafile': self.ca_roots}
+                elif os.path.isdir(self.ca_roots):
+                    kwargs = {'capath': self.ca_roots}
+                else:
+                    raise XmppException('Custom CA certificates location does not exist: %s' % self.ca_roots)
+                context.load_verify_locations(**kwargs)
+            else:
+                context.load_default_certs()
 
-        stats = context.cert_store_stats()
-        if stats['x509_ca'] == 0:
-            _log.warning(
-                'Tried to load CA certificates from default locations, but could not find any CA certificates.')
-        else:
-            _log.debug('Certificate store statistics: %s', stats)
+            stats = context.cert_store_stats()
+            if stats['x509_ca'] == 0:
+                _log.warning(
+                    'Tried to load CA certificates from default locations, but could not find any CA certificates.')
+                raise XmppException('Could not load CA certificates from default locations.')
+            else:
+                _log.debug('Certificate store statistics: %s', stats)
 
         return context
 
@@ -321,6 +334,7 @@ def parse_arguments(excluded_kwargs=()):
     argp.add_argument('--starttls', action='store_true', help='Whether to use StartTLS when connecting.')
     argp.add_argument('--no-check-certificates', dest='check_certificates', default=True, action='store_false',
                       help='Do not check whether the XMPP server certificate is valid.')
+    argp.add_argument('--ca-roots', help='Path to a file or directory where CA certificates can be found.')
     argp.add_argument('-w', '--warning', metavar='SECONDS', default='',
                       help='Return warning if connection setup takes longer than SECONDS')
     argp.add_argument('-c', '--critical', metavar='SECONDS', default='',
@@ -352,7 +366,8 @@ def main():
     check = nagiosplugin.Check(Xmpp(**kwargs), nagiosplugin.ScalarContext('time', args.warning, args.critical,
                                                                           fmt_metric='Request took {value}{uom}'),
                                DaysValidContext('certificate_days_left', warning_days=args.warning_days,
-                                                critical_days=args.critical_days, check_lifetime=args.check_certificates,
+                                                critical_days=args.critical_days,
+                                                check_lifetime=args.check_certificates,
                                                 fmt_metric='Certificate valid for {value} days'),
                                ExceptionContext('exception'), CommaSeparatedSummary())
     check.main(verbose=args.verbose)
