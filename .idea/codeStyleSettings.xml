@@ -5,7 +5,8 @@
       <value>
         <option name="LINE_SEPARATOR" value="&#10;" />
         <MarkdownNavigatorCodeStyleSettings>
-          <option name="RIGHT_MARGIN" value="72" />
+          <option name="SMART_EDIT_TABLES" value="true" />
+          <option name="RIGHT_MARGIN" value="80" />
         </MarkdownNavigatorCodeStyleSettings>
         <Python>
           <option name="OPTIMIZE_IMPORTS_SORT_NAMES_IN_FROM_IMPORTS" value="true" />
@@ -17,7 +18,6 @@
         </codeStyleSettings>
       </value>
     </option>
-    <option name="USE_PER_PROJECT_SETTINGS" value="true" />
     <option name="PREFERRED_PROJECT_CODE_STYLE" value="Pascal Mathis" />
   </component>
 </project>
