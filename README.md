@@ -2,7 +2,7 @@
 
 [![License](http://img.shields.io/badge/license-GPL--3.0+-blue.svg)](https://github.com/SnapServ/monitoring-plugins/LICENSE.txt)
 [![Python Compatibility](http://img.shields.io/badge/python_compatiblity-2.7_and_3.3--3.5-brightgreen.svg)](#)
-[![GitHub issues](https://img.shields.io/github/issues/badges/shields.svg)](https://github.com/SnapServ/monitoring-plugins/issues)
+[![GitHub issues](https://img.shields.io/github/issues/SnapServ/monitoring-plugins.svg)](https://github.com/SnapServ/monitoring-plugins/issues)
 [![Python Compatibility](http://img.shields.io/badge/copyright-SnapServ_--_Pascal_Mathis-lightgrey.svg)](#)
 
 ### Table of Contents
