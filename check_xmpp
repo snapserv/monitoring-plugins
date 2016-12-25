@@ -385,7 +385,7 @@ def main():
                                                 critical_days=args.critical_days,
                                                 check_lifetime=args.check_certificates,
                                                 fmt_metric='Certificate valid for {value} days'),
-                               ExceptionContext('exception'), CommaSeparatedSummary())
+                               ExceptionContext(), CommaSeparatedSummary())
     check.main(verbose=args.verbose)
 
 

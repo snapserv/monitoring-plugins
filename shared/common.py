@@ -23,7 +23,7 @@ class CommaSeparatedSummary(nagiosplugin.Summary):
 
 
 class ExceptionContext(nagiosplugin.Context):
-    def __init__(self, name):
+    def __init__(self, name='exception'):
         super(ExceptionContext, self).__init__(name)
 
     def evaluate(self, metric, resource):

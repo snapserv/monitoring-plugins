@@ -57,7 +57,7 @@ class Dns(nagiosplugin.Resource):
             return nagiosplugin.Metric('response_time', response_time, min=0, uom='s')
         except dns.exception.DNSException as exception:
             _log.info('Query has failed with an exception: ' + str(exception))
-            return nagiosplugin.Metric('query_exception', exception)
+            return nagiosplugin.Metric('exception', exception)
 
 
 class DnsSummary(nagiosplugin.Summary):
@@ -73,8 +73,8 @@ class DnsSummary(nagiosplugin.Summary):
         return message
 
     def problem(self, results):
-        if 'query_exception' in results and type(results['query_exception'].metric.value) == dns.exception.Timeout:
-            message = '%s (>%s seconds)' % (str(results['query_exception'].metric.value), self.timeout)
+        if 'exception' in results and type(results['exception'].metric.value) == dns.exception.Timeout:
+            message = '%s (>%s seconds)' % (str(results['exception'].metric.value), self.timeout)
         else:
             message = super(DnsSummary, self).problem(results)
 
@@ -104,7 +104,7 @@ def main():
 
     check = nagiosplugin.Check(Dns(args.server, args.query_name, args.rd_type, args.timeout),
                                nagiosplugin.ScalarContext('response_time', args.warning, args.critical),
-                               ExceptionContext('query_exception'), DnsSummary(args.server, args.timeout))
+                               ExceptionContext(), DnsSummary(args.server, args.timeout))
     check.main(verbose=args.verbose)
 
 
