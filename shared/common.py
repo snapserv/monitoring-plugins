@@ -14,36 +14,34 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-import abc
 import copy
 import argparse
 import nagiosplugin
 
-from typing import Any, Dict, Tuple
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Tuple, Optional
 
 
-class NagiosPlugin(object):
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self):
+class NagiosPlugin(ABC):
+    def __init__(self) -> None:
         self.check = None  # type: nagiosplugin.Check
         self.argument_parser = None  # type: argparse.ArgumentParser
         self.arguments = {}  # type: Dict[str, Any]
         self.keyword_arguments = {}  # type: Dict[str, Any]
-        self.exclude_from_kwargs = ()  # type: Tuple[str]
+        self.exclude_from_kwargs = ()  # type: Tuple
 
         self._initialize_argument_parser()
 
-    @abc.abstractmethod
-    def declare_arguments(self):
+    @abstractmethod
+    def declare_arguments(self) -> None:
         pass
 
-    @abc.abstractmethod
-    def instantiate_check(self):
-        return
+    @abstractmethod
+    def instantiate_check(self) -> nagiosplugin.Check:
+        pass
 
     @nagiosplugin.guarded()
-    def execute(self):
+    def execute(self) -> None:
         self.declare_arguments()
         self.parse_arguments()
         self.instantiate_check()
@@ -52,14 +50,17 @@ class NagiosPlugin(object):
             self.check.main(verbose=self.arguments.get('verbose', 0))
         else:
             raise RuntimeError(
-                'NagiosPlugin[%s] did not instantiate object of type nagiosplugin.Check()' % self.__class__.__name__)
+                'NagiosPlugin[%s] did not instantiate object of type nagiosplugin.Check()' % self.__class__.__name__
+            )
 
-    def parse_arguments(self):
+    def parse_arguments(self) -> None:
+        # Parse all arguments and convert them to keyword arguments, excluding specific 'keys'/'keywords'
         self.arguments = vars(self.argument_parser.parse_args())
         self.keyword_arguments = copy.deepcopy(self.arguments)
         [self.keyword_arguments.pop(argument) for argument in self.exclude_from_kwargs]
 
-    def _initialize_argument_parser(self):
+    def _initialize_argument_parser(self) -> None:
+        # Initialize the argument parser and add the 'verbose' flag
         self.argument_parser = argparse.ArgumentParser(description=__doc__)
         self.argument_parser.add_argument('-v', '--verbose', action='count', default=0,
                                           help='Increase output verbosity, can be used up to 3 times.')
@@ -67,46 +68,58 @@ class NagiosPlugin(object):
 
 
 class CommaSeparatedSummary(nagiosplugin.Summary):
-    def ok(self, results):
+    def ok(self, results) -> str:
         return ', '.join([str(result) for result in results if result.metric])
 
 
 class ExceptionContext(nagiosplugin.Context):
-    def __init__(self, name='exception'):
+    def __init__(self, name: str = 'exception') -> None:
         super(ExceptionContext, self).__init__(name)
 
-    def evaluate(self, metric, resource):
+    def evaluate(self, metric: nagiosplugin.Metric, resource: nagiosplugin.Resource) -> nagiosplugin.Result:
         return self.result_cls(nagiosplugin.Critical, str(metric.value), metric)
 
 
 class DaysValidContext(nagiosplugin.Context):
     fmt_hint = 'less than {value} days'
 
-    def __init__(self, name, check_lifetime=True, warning_days=0, critical_days=0, fmt_metric='Valid for {value} days'):
-        super(DaysValidContext, self).__init__(name, fmt_metric=fmt_metric)
+    def __init__(self,
+                 name: str,
+                 check_lifetime: bool = True,
+                 warning_days: int = 0,
+                 critical_days: int = 0,
+                 fmt_metric: str = 'Valid for {value} days') -> None:
+        super().__init__(name, fmt_metric=fmt_metric)
 
         self.name = name
         self.check_lifetime = check_lifetime
         self.warning_days = warning_days
         self.critical_days = critical_days
-
         self.warning = nagiosplugin.Range('@%d:' % self.warning_days)
         self.critical = nagiosplugin.Range('@%d:' % self.critical_days)
 
-    def evaluate(self, metric, resource):
+    def evaluate(self, metric: nagiosplugin.Metric, resource: nagiosplugin.Resource) -> nagiosplugin.Result:
         if self.check_lifetime and metric.value is not None:
             if self.critical.match(metric.value):
-                return nagiosplugin.Result(nagiosplugin.Critical, hint=self.fmt_hint.format(value=self.critical_days),
-                                           metric=metric)
+                return nagiosplugin.Result(
+                    nagiosplugin.Critical,
+                    hint=self.fmt_hint.format(value=self.critical_days),
+                    metric=metric
+                )
             elif self.warning.match(metric.value):
-                return nagiosplugin.Result(nagiosplugin.Warn, hint=self.fmt_hint.format(value=self.warning_days),
-                                           metric=metric)
+                return nagiosplugin.Result(
+                    nagiosplugin.Warn,
+                    hint=self.fmt_hint.format(value=self.warning_days),
+                    metric=metric
+                )
             else:
                 return super(DaysValidContext, self).evaluate(metric, resource)
         else:
             return nagiosplugin.Result(nagiosplugin.Ok)
 
-    def performance(self, metric, resource):
+    def performance(self,
+                    metric: nagiosplugin.Metric,
+                    resource: nagiosplugin.Resource) -> Optional[nagiosplugin.Performance]:
         if self.check_lifetime and metric.value is not None:
             return nagiosplugin.Performance(self.name, metric.value, '')
         return None
