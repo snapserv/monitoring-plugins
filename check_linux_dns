@@ -16,97 +16,112 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import logging
-import argparse
+import math
 import nagiosplugin
 import time
 import dns.resolver
 
-from shared.common import ExceptionContext
+from typing import Optional
+from shared.common import ExceptionContext, NagiosPlugin
 
 _log = logging.getLogger('nagiosplugin')
 
 
-class Dns(nagiosplugin.Resource):
-    def __init__(self, server, query_name, rd_type, timeout):
-        self.server = server
-        self.query_name = query_name
-        self.rd_type = rd_type
-        self.timeout = timeout
+class DnsResource(nagiosplugin.Resource):
+    def __init__(self, server: Optional[str], query_name: str, rd_type: dns.rdatatype, timeout: float):
+        self.server = server  # type: Optional[str]
+        self.query_name = query_name  # type: str
+        self.rd_type = rd_type  # type: dns.rdatatype
+        self.timeout = timeout  # type: float
 
-    def probe(self):
+    def probe(self) -> nagiosplugin.Metric:
+        try:
+            # Instantiate a new resolver and execute the query while measuring the time.
+            resolver = self.get_resolver()
+            _log.info('Querying system nameservers for "%s" with type "%s"' % (self.query_name, self.rd_type))
+            start_time = time.time()
+            answer = resolver.query(self.query_name, self.rd_type)
+            response_time = time.time() - start_time
+
+            # Get the query result and print it as a debug message
+            records = [str(record) for record in answer.rrset]
+            _log.debug('Query result: ' + ', '.join(records))
+
+            # As dnspython only supports integer timeouts, we have to manually check the query time too and throw an
+            # exception if it should have taken too long.
+            if response_time > self.timeout:
+                _log.debug('Manually raising timeout exception, as dnspython only supports whole seconds.')
+                raise dns.exception.Timeout(timeout=response_time)
+
+            # Return the metric to the plugin
+            return nagiosplugin.Metric('response_time', response_time, min=0, uom='s')
+        except dns.exception.DNSException as exception:
+            # Exceptions will be passed back through the ExceptionContext
+            _log.info('Query has failed with an exception: ' + str(exception))
+            return nagiosplugin.Metric('exception', exception)
+
+    def get_resolver(self) -> dns.resolver.Resolver:
         if not self.server:
             resolver = dns.resolver.Resolver(filename='/etc/resolv.conf', configure=True)
         else:
             resolver = dns.resolver.Resolver(configure=False)
             resolver.nameservers = [self.server]
 
-        resolver.timeout = resolver.lifetime = self.timeout
-
-        try:
-            start_time = time.time()
-            _log.info('Querying system nameservers for "%s" with type "%s"' % (self.query_name, self.rd_type))
-            answer = resolver.query(self.query_name, self.rd_type)
-            response_time = time.time() - start_time
-            records = [str(record) for record in answer.rrset]
-            _log.debug('Query result: ' + ', '.join(records))
-
-            if response_time > self.timeout:
-                _log.debug('Manually raising timeout exception, as dnspython only supports whole seconds.')
-                raise dns.exception.Timeout()
-
-            return nagiosplugin.Metric('response_time', response_time, min=0, uom='s')
-        except dns.exception.DNSException as exception:
-            _log.info('Query has failed with an exception: ' + str(exception))
-            return nagiosplugin.Metric('exception', exception)
+        resolver.timeout = resolver.lifetime = math.ceil(self.timeout)
+        return resolver
 
 
 class DnsSummary(nagiosplugin.Summary):
-    def __init__(self, server, timeout):
-        self.server = server
-        self.timeout = timeout
+    def __init__(self, **kwargs):
+        self.server = kwargs.get('server', None)  # type: str
+        self.timeout = kwargs.get('timeout')  # type: float
+        self.prefix = (self.server + ': ') if self.server else ''  # type: str
 
-    def ok(self, results):
+    def ok(self, results: nagiosplugin.Results) -> str:
         message = 'Response time is %ss' % round(results['response_time'].metric.value, 3)
-        if self.server:
-            message = '%s: %s' % (self.server, message)
 
-        return message
+        return self.prefix + message
 
-    def problem(self, results):
+    def problem(self, results: nagiosplugin.Results) -> str:
         if 'exception' in results and type(results['exception'].metric.value) == dns.exception.Timeout:
             message = '%s (>%s seconds)' % (str(results['exception'].metric.value), self.timeout)
         else:
-            message = super(DnsSummary, self).problem(results)
+            message = super().problem(results)
 
-        if self.server:
-            message = '%s: %s' % (self.server, message)
-
-        return message
+        return self.prefix + message
 
 
-@nagiosplugin.guarded()
-def main():
-    argp = argparse.ArgumentParser(description=__doc__)
-    argp.add_argument('-s', '--server', default=None,
-                      help='Specifies the DNS server to use. If not specified, use the system DNS resolvers.')
-    argp.add_argument('-q', '--query-name', required=True,
-                      help='Specifies the query name for the DNS resolution check.')
-    argp.add_argument('-r', '--rd-type', required=True, help='Specifies the query type for the DNS resolution check.')
-    argp.add_argument('-t', '--timeout', required=True, type=float,
-                      help='Specifies the timeout for the DNS resolution check.')
-    argp.add_argument('-w', '--warning', metavar='RANGE', default='',
-                      help='Return warning if response time is outside RANGE')
-    argp.add_argument('-c', '--critical', metavar='RANGE', default='',
-                      help='Return critical if response time is outside RANGE')
-    argp.add_argument('-v', '--verbose', action='count', default=0,
-                      help='Increase output verbosity (use up to 3 times)')
-    args = argp.parse_args()
+class Dns(NagiosPlugin):
+    def declare_arguments(self):
+        self.argument_parser.add_argument('-s', '--server', default=None,
+                                          help='Use a specific DNS server for executing the check. Defaults to system '
+                                               'DNS resolvers if not specified.')
+        self.argument_parser.add_argument('-q', '--query-name', required=True,
+                                          help='The query name which should be queried by using domain name '
+                                               'resolution.')
+        self.argument_parser.add_argument('-T', '--rd-type', required=True,
+                                          help='The record type which should be queried, e.g.: SOA, NS, A, AAAA')
+        self.argument_parser.add_argument('-t', '--timeout', required=True, type=float, metavar='TIMEOUT',
+                                          help='Abort the query and return CRITICAL when query takes longer than '
+                                               'TIMEOUT.')
+        self.argument_parser.add_argument('-w', '--warning', metavar='RANGE', default='',
+                                          help='Return WARNING if response time is outside RANGE.')
+        self.argument_parser.add_argument('-c', '--critical', metavar='RANGE', default='',
+                                          help='Return CRITICAL if response time is outside RANGE.')
+        self.exclude_from_kwargs += ('warning', 'critical')
 
-    check = nagiosplugin.Check(Dns(args.server, args.query_name, args.rd_type, args.timeout),
-                               nagiosplugin.ScalarContext('response_time', args.warning, args.critical),
-                               ExceptionContext(), DnsSummary(args.server, args.timeout))
-    check.main(verbose=args.verbose)
+    def instantiate_check(self):
+        self.check = nagiosplugin.Check(
+            DnsResource(**self.keyword_arguments),
+            nagiosplugin.ScalarContext(
+                name='response_time',
+                warning=self.arguments.get('warning'),
+                critical=self.arguments.get('critical')
+            ),
+            ExceptionContext(),
+            DnsSummary(**self.keyword_arguments)
+        )
 
 
 if __name__ == '__main__':
-    main()
+    Dns().execute()

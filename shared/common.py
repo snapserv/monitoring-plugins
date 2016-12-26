@@ -14,7 +14,56 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+import abc
+import copy
+import argparse
 import nagiosplugin
+
+from typing import Any, Dict, Tuple
+
+
+class NagiosPlugin(object):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self):
+        self.check = None  # type: nagiosplugin.Check
+        self.argument_parser = None  # type: argparse.ArgumentParser
+        self.arguments = {}  # type: Dict[str, Any]
+        self.keyword_arguments = {}  # type: Dict[str, Any]
+        self.exclude_from_kwargs = ()  # type: Tuple[str]
+
+        self._initialize_argument_parser()
+
+    @abc.abstractmethod
+    def declare_arguments(self):
+        pass
+
+    @abc.abstractmethod
+    def instantiate_check(self):
+        return
+
+    @nagiosplugin.guarded()
+    def execute(self):
+        self.declare_arguments()
+        self.parse_arguments()
+        self.instantiate_check()
+
+        if self.check:
+            self.check.main(verbose=self.arguments.get('verbose', 0))
+        else:
+            raise RuntimeError(
+                'NagiosPlugin[%s] did not instantiate object of type nagiosplugin.Check()' % self.__class__.__name__)
+
+    def parse_arguments(self):
+        self.arguments = vars(self.argument_parser.parse_args())
+        self.keyword_arguments = copy.deepcopy(self.arguments)
+        [self.keyword_arguments.pop(argument) for argument in self.exclude_from_kwargs]
+
+    def _initialize_argument_parser(self):
+        self.argument_parser = argparse.ArgumentParser(description=__doc__)
+        self.argument_parser.add_argument('-v', '--verbose', action='count', default=0,
+                                          help='Increase output verbosity, can be used up to 3 times.')
+        self.exclude_from_kwargs += ('verbose',)
 
 
 class CommaSeparatedSummary(nagiosplugin.Summary):
