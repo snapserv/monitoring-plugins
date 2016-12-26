@@ -21,15 +21,15 @@ import nagiosplugin
 import time
 import dns.resolver
 
-from typing import Optional
+from typing import Any, Dict, Optional
 from shared.common import ExceptionContext, NagiosPlugin
 
 _log = logging.getLogger('nagiosplugin')
 
 
 class DnsTimeout(dns.exception.Timeout):
-    supp_kwargs = {'timeout', 'threshold'}
-    fmt = "The DNS operation timed out after {timeout} seconds (>{threshold} seconds)"
+    supp_kwargs = {'timeout', 'threshold'}  # type: Dict[str]
+    fmt = "The DNS operation timed out after {timeout} seconds (>{threshold} seconds)"  # type: str
 
 
 class DnsResource(nagiosplugin.Resource):
