@@ -25,7 +25,7 @@ from shared.common import NagiosPlugin
 _log = logging.getLogger('nagiosplugin')
 
 
-class LoadResource(nagiosplugin.Resource):
+class Load(nagiosplugin.Resource):
     def __init__(self, per_cpu: bool) -> None:
         self.per_cpu = per_cpu  # type: bool
 
@@ -64,7 +64,7 @@ class LoadSummary(nagiosplugin.Summary):
         )
 
 
-class Load(NagiosPlugin):
+class LoadPlugin(NagiosPlugin):
     def declare_arguments(self) -> None:
         self.argument_parser.add_argument('-w', '--warning', metavar='RANGE', default='',
                                           help='Return WARNING if load is outside RANGE.')
@@ -76,7 +76,7 @@ class Load(NagiosPlugin):
 
     def instantiate_check(self) -> nagiosplugin.Check:
         return nagiosplugin.Check(
-            LoadResource(**self.keyword_arguments),
+            Load(**self.keyword_arguments),
             nagiosplugin.ScalarContext(
                 name='load',
                 warning=self.arguments.get('warning'),
@@ -87,4 +87,4 @@ class Load(NagiosPlugin):
 
 
 if __name__ == '__main__':
-    Load().execute()
+    LoadPlugin().execute()

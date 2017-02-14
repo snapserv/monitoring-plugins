@@ -44,7 +44,7 @@ class NagiosPlugin(ABC):
     def execute(self) -> None:
         self.declare_arguments()
         self.parse_arguments()
-        self.instantiate_check()
+        self.check = self.instantiate_check()
 
         if self.check:
             self.check.main(verbose=self.arguments.get('verbose', 0))

@@ -32,7 +32,7 @@ class DnsTimeout(dns.exception.Timeout):
     fmt = "The DNS operation timed out after {timeout} seconds (>{threshold} seconds)"  # type: str
 
 
-class DnsResource(nagiosplugin.Resource):
+class Dns(nagiosplugin.Resource):
     def __init__(self, server: Optional[str], query_name: str, rd_type: dns.rdatatype, timeout: float) -> None:
         self.server = server  # type: Optional[str]
         self.query_name = query_name  # type: str
@@ -101,7 +101,7 @@ class DnsSummary(nagiosplugin.Summary):
         return self.prefix + message
 
 
-class Dns(NagiosPlugin):
+class DnsPlugin(NagiosPlugin):
     def declare_arguments(self) -> None:
         self.argument_parser.add_argument('-s', '--server', default=None,
                                           help='Use a specific DNS server for executing the check. Defaults to system '
@@ -122,7 +122,7 @@ class Dns(NagiosPlugin):
 
     def instantiate_check(self) -> nagiosplugin.Check:
         return nagiosplugin.Check(
-            DnsResource(**self.keyword_arguments),
+            Dns(**self.keyword_arguments),
             nagiosplugin.ScalarContext(
                 name='response_time',
                 warning=self.arguments.get('warning'),
@@ -134,4 +134,4 @@ class Dns(NagiosPlugin):
 
 
 if __name__ == '__main__':
-    Dns().execute()
+    DnsPlugin().execute()
