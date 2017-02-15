@@ -120,7 +120,7 @@ class DnsPlugin(NagiosPlugin):
             help='The record type which should be queried, e.g.: SOA, NS, A, AAAA'
         )
         self.argument_parser.add_argument(
-            '-t', '--timeout', required=True, type=float, etavar='TIMEOUT',
+            '-t', '--timeout', required=True, type=float, metavar='TIMEOUT',
             help='Abort the query and return CRITICAL when query takes longer than TIMEOUT.'
         )
         self.argument_parser.add_argument(
