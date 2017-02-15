@@ -16,13 +16,13 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import logging
-import nagiosplugin
 import subprocess
+from typing import Generator  # pylint: disable=unused-import
 
-from typing import Generator
+import nagiosplugin
 from shared.common import NagiosPlugin
 
-_log = logging.getLogger('nagiosplugin')
+LOGGER = logging.getLogger('nagiosplugin')
 
 
 class Load(nagiosplugin.Resource):
@@ -31,17 +31,17 @@ class Load(nagiosplugin.Resource):
 
     @staticmethod
     def cpu_count() -> int:
-        _log.info('Counting CPUs with "nproc"')
+        LOGGER.info('Counting CPUs with "nproc"')
         cpu_count = int(subprocess.check_output(['nproc']))
-        _log.debug('Found %d CPUs in total', cpu_count)
+        LOGGER.debug('Found %d CPUs in total', cpu_count)
         return cpu_count
 
     def probe(self) -> Generator[nagiosplugin.Metric, None, None]:
         # Read the load averages from the proc filesystem
-        _log.info('Reading load averages from /proc/loadavg')
+        LOGGER.info('Reading load averages from /proc/loadavg')
         with open('/proc/loadavg') as file:
             load_averages = file.readline().split(' ')[0:3]
-        _log.debug('Raw load averages are %s', load_averages)
+        LOGGER.debug('Raw load averages are %s', load_averages)
 
         # Divide the averages by the CPU count if 'per_cpu' is active
         cpu_count = self.cpu_count() if self.per_cpu else 1
@@ -49,7 +49,8 @@ class Load(nagiosplugin.Resource):
 
         # Yield the last minute/5 minutes/15 minutes averages
         for index, period in enumerate([1, 5, 15]):
-            yield nagiosplugin.Metric('load%d' % period, load_averages[index], min=0, context='load')
+            yield nagiosplugin.Metric('load%d' % period, load_averages[index], min=0,
+                                      context='load')
 
 
 class LoadSummary(nagiosplugin.Summary):
@@ -71,7 +72,8 @@ class LoadPlugin(NagiosPlugin):
         self.argument_parser.add_argument('-c', '--critical', metavar='RANGE', default='',
                                           help='Return CRITICAL if load is outside RANGE.')
         self.argument_parser.add_argument('--per-cpu', action='store_true', default=False,
-                                          help='Show load averages per CPU by dividing averages through CPU count.')
+                                          help='Show load averages per CPU by dividing averages '
+                                               + 'through CPU count.')
         self.exclude_from_kwargs += ('warning', 'critical')
 
     def instantiate_check(self) -> nagiosplugin.Check:

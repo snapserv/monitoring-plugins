@@ -17,14 +17,14 @@
 
 import logging
 import math
-import nagiosplugin
 import time
-import dns.resolver
+from typing import Dict, Optional  # pylint: disable=unused-import
 
-from typing import Any, Dict, Optional
+import nagiosplugin
+import dns.resolver
 from shared.common import ExceptionContext, NagiosPlugin
 
-_log = logging.getLogger('nagiosplugin')
+LOGGER = logging.getLogger('nagiosplugin')
 
 
 class DnsTimeout(dns.exception.Timeout):
@@ -33,7 +33,8 @@ class DnsTimeout(dns.exception.Timeout):
 
 
 class Dns(nagiosplugin.Resource):
-    def __init__(self, server: Optional[str], query_name: str, rd_type: dns.rdatatype, timeout: float) -> None:
+    def __init__(self, server: Optional[str], query_name: str, rd_type: dns.rdatatype,
+                 timeout: float) -> None:
         self.server = server  # type: Optional[str]
         self.query_name = query_name  # type: str
         self.rd_type = rd_type  # type: dns.rdatatype
@@ -43,26 +44,28 @@ class Dns(nagiosplugin.Resource):
         try:
             # Instantiate a new resolver and execute the query while measuring the time.
             resolver = self.get_resolver()
-            _log.info('Querying system nameservers for "%s" with type "%s"' % (self.query_name, self.rd_type))
+            LOGGER.info('Querying system nameservers for "%s" with type "%s"',
+                        self.query_name, self.rd_type)
             start_time = time.time()
             answer = resolver.query(self.query_name, self.rd_type)
             response_time = time.time() - start_time
 
             # Get the query result and print it as a debug message
             records = [str(record) for record in answer.rrset]
-            _log.debug('Query result: ' + ', '.join(records))
+            LOGGER.debug('Query result: ' + ', '.join(records))
 
-            # As dnspython only supports integer timeouts, we have to manually check the query time too and throw an
-            # exception if it should have taken too long.
+            # As dnspython only supports integer timeouts, we have to manually check the query
+            # time too and throw an exception if it should have taken too long.
             if response_time > self.timeout:
-                _log.debug('Manually raising timeout exception, as dnspython only supports whole seconds.')
+                LOGGER.debug('Manually raising timeout exception, as dnspython only supports '
+                             + 'whole seconds.')
                 raise DnsTimeout(timeout=response_time, threshold=self.timeout)
 
             # Return the metric to the plugin
             return nagiosplugin.Metric('response_time', response_time, min=0, uom='s')
 
-        # Re-raise timeout exceptions from dnspython with our own class (supports displaying the threshold value) and
-        # pass it to our ExceptionContext
+        # Re-raise timeout exceptions from dnspython with our own class (supports displaying
+        # the threshold value) and pass it to our ExceptionContext
         except dns.exception.Timeout as exception:
             return nagiosplugin.Metric('exception', DnsTimeout(
                 timeout=exception.kwargs.get('timeout'),
@@ -71,7 +74,7 @@ class Dns(nagiosplugin.Resource):
 
         # Pass exceptions from dnspython to our ExceptionContext for further processing
         except dns.exception.DNSException as exception:
-            _log.info('Query has failed with an exception: ' + str(exception))
+            LOGGER.info('Query has failed with an exception: ' + str(exception))
             return nagiosplugin.Metric('exception', exception)
 
     def get_resolver(self) -> dns.resolver.Resolver:
@@ -82,8 +85,8 @@ class Dns(nagiosplugin.Resource):
             resolver = dns.resolver.Resolver(configure=False)
             resolver.nameservers = [self.server]
 
-        # dnspython only supports integer timeouts, so we always round the number up - we do our own, manual checks
-        # when executing the query to properly handle float timeouts.
+        # dnspython only supports integer timeouts, so we always round the number up - we do
+        # our own, manual checks when executing the query to properly handle float timeouts.
         resolver.timeout = resolver.lifetime = math.ceil(self.timeout)
         return resolver
 
@@ -104,16 +107,19 @@ class DnsSummary(nagiosplugin.Summary):
 class DnsPlugin(NagiosPlugin):
     def declare_arguments(self) -> None:
         self.argument_parser.add_argument('-s', '--server', default=None,
-                                          help='Use a specific DNS server for executing the check. Defaults to system '
-                                               'DNS resolvers if not specified.')
+                                          help='Use a specific DNS server for executing the '
+                                               + 'check. Defaults to system DNS resolvers if not '
+                                               + 'specified.')
         self.argument_parser.add_argument('-q', '--query-name', required=True,
-                                          help='The query name which should be queried by using domain name '
-                                               'resolution.')
+                                          help='The query name which should be queried by using '
+                                               + 'domain name resolution.')
         self.argument_parser.add_argument('-T', '--rd-type', required=True,
-                                          help='The record type which should be queried, e.g.: SOA, NS, A, AAAA')
-        self.argument_parser.add_argument('-t', '--timeout', required=True, type=float, metavar='TIMEOUT',
-                                          help='Abort the query and return CRITICAL when query takes longer than '
-                                               'TIMEOUT.')
+                                          help='The record type which should be queried, e.g.: '
+                                               + 'SOA, NS, A, AAAA')
+        self.argument_parser.add_argument('-t', '--timeout', required=True,
+                                          type=float, etavar='TIMEOUT',
+                                          help='Abort the query and return CRITICAL when query'
+                                               + 'takes longer than TIMEOUT.')
         self.argument_parser.add_argument('-w', '--warning', metavar='RANGE', default='',
                                           help='Return WARNING if response time is outside RANGE.')
         self.argument_parser.add_argument('-c', '--critical', metavar='RANGE', default='',

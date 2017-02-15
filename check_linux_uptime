@@ -17,20 +17,20 @@
 
 import logging
 import argparse
-import nagiosplugin
 import math
-
 from datetime import timedelta
 
-_log = logging.getLogger('nagiosplugin')
+import nagiosplugin
+
+LOGGER = logging.getLogger('nagiosplugin')
 
 
 class Uptime(nagiosplugin.Resource):
     def probe(self):
-        _log.info('Reading system uptime from /proc/uptime')
+        LOGGER.info('Reading system uptime from /proc/uptime')
         with open('/proc/uptime') as file:
             raw_uptime = file.readline().split(' ')[0]
-        _log.debug('Raw system uptime is %s', raw_uptime)
+        LOGGER.debug('Raw system uptime is %s', raw_uptime)
 
         uptime_seconds = round(float(raw_uptime))
         yield nagiosplugin.Metric('uptime', uptime_seconds, min=0, uom='s', context='uptime')
@@ -38,20 +38,20 @@ class Uptime(nagiosplugin.Resource):
 
 class UptimeContext(nagiosplugin.Context):
     def __init__(self, warning=None, critical=None):
-        super(UptimeContext, self).__init__('uptime', fmt_metric=self.fmt_metric)
+        super(UptimeContext, self).__init__('uptime', fmt_metric=self.fmt_uptime_metric)
         self.warning = nagiosplugin.Range(warning)
         self.critical = nagiosplugin.Range(critical)
 
     @staticmethod
-    def fmt_metric(metric, _):
+    def fmt_uptime_metric(metric, _):
         return 'uptime is %s' % timedelta(seconds=metric.value)
 
     @staticmethod
-    def fmt_range(range):
-        if range.end == float('inf'):
-            return 'less than %d minutes' % range.start
+    def fmt_range(rng):
+        if rng.end == float('inf'):
+            return 'less than %d minutes' % rng.start
         else:
-            return 'outside range of %s to %s minutes' % (range.start, range.end)
+            return 'outside range of %s to %s minutes' % (rng.start, rng.end)
 
     def evaluate(self, metric, resource):
         uptime_minutes = math.floor(metric.value / 60)

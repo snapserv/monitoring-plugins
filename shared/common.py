@@ -16,10 +16,10 @@
 
 import copy
 import argparse
-import nagiosplugin
-
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Tuple, Optional
+from typing import Any, Dict, Tuple, Optional  # pylint: disable=unused-import
+
+import nagiosplugin
 
 
 class NagiosPlugin(ABC):
@@ -50,20 +50,24 @@ class NagiosPlugin(ABC):
             self.check.main(verbose=self.arguments.get('verbose', 0))
         else:
             raise RuntimeError(
-                'NagiosPlugin[%s] did not instantiate object of type nagiosplugin.Check()' % self.__class__.__name__
+                'NagiosPlugin[%s] did not instantiate object of type nagiosplugin.Check()'
+                % self.__class__.__name__
             )
 
     def parse_arguments(self) -> None:
-        # Parse all arguments and convert them to keyword arguments, excluding specific 'keys'/'keywords'
+        # Parse all arguments and convert them to keyword arguments, excluding specific
+        # 'keys' / 'keywords'
         self.arguments = vars(self.argument_parser.parse_args())
         self.keyword_arguments = copy.deepcopy(self.arguments)
-        [self.keyword_arguments.pop(argument) for argument in self.exclude_from_kwargs]
+        for argument in self.exclude_from_kwargs:
+            self.keyword_arguments.pop(argument)
 
     def _initialize_argument_parser(self) -> None:
         # Initialize the argument parser and add the 'verbose' flag
         self.argument_parser = argparse.ArgumentParser(description=__doc__)
         self.argument_parser.add_argument('-v', '--verbose', action='count', default=0,
-                                          help='Increase output verbosity, can be used up to 3 times.')
+                                          help='Increase output verbosity, can be used up to '
+                                               + '3 times.')
         self.exclude_from_kwargs += ('verbose',)
 
 
@@ -73,22 +77,19 @@ class CommaSeparatedSummary(nagiosplugin.Summary):
 
 
 class ExceptionContext(nagiosplugin.Context):
-    def __init__(self, name: str = 'exception') -> None:
+    def __init__(self, name='exception') -> None:
         super(ExceptionContext, self).__init__(name)
 
-    def evaluate(self, metric: nagiosplugin.Metric, resource: nagiosplugin.Resource) -> nagiosplugin.Result:
+    def evaluate(self, metric: nagiosplugin.Metric,
+                 resource: nagiosplugin.Resource) -> nagiosplugin.Result:
         return self.result_cls(nagiosplugin.Critical, str(metric.value), metric)
 
 
 class DaysValidContext(nagiosplugin.Context):
     fmt_hint = 'less than {value} days'
 
-    def __init__(self,
-                 name: str,
-                 check_lifetime: bool = True,
-                 warning_days: int = 0,
-                 critical_days: int = 0,
-                 fmt_metric: str = 'Valid for {value} days') -> None:
+    def __init__(self, name, check_lifetime=True, warning_days=0, critical_days=0,
+                 fmt_metric='Valid for {value} days') -> None:
         super().__init__(name, fmt_metric=fmt_metric)
 
         self.name = name
@@ -98,7 +99,8 @@ class DaysValidContext(nagiosplugin.Context):
         self.warning = nagiosplugin.Range('@%d:' % self.warning_days)
         self.critical = nagiosplugin.Range('@%d:' % self.critical_days)
 
-    def evaluate(self, metric: nagiosplugin.Metric, resource: nagiosplugin.Resource) -> nagiosplugin.Result:
+    def evaluate(self, metric: nagiosplugin.Metric,
+                 resource: nagiosplugin.Resource) -> nagiosplugin.Result:
         if self.check_lifetime and metric.value is not None:
             if self.critical.match(metric.value):
                 return nagiosplugin.Result(
