@@ -106,35 +106,45 @@ class DnsSummary(nagiosplugin.Summary):
 
 class DnsPlugin(NagiosPlugin):
     def declare_arguments(self) -> None:
-        self.argument_parser.add_argument('-s', '--server', default=None,
-                                          help='Use a specific DNS server for executing the '
-                                               + 'check. Defaults to system DNS resolvers if not '
-                                               + 'specified.')
-        self.argument_parser.add_argument('-q', '--query-name', required=True,
-                                          help='The query name which should be queried by using '
-                                               + 'domain name resolution.')
-        self.argument_parser.add_argument('-T', '--rd-type', required=True,
-                                          help='The record type which should be queried, e.g.: '
-                                               + 'SOA, NS, A, AAAA')
-        self.argument_parser.add_argument('-t', '--timeout', required=True,
-                                          type=float, etavar='TIMEOUT',
-                                          help='Abort the query and return CRITICAL when query'
-                                               + 'takes longer than TIMEOUT.')
-        self.argument_parser.add_argument('-w', '--warning', metavar='RANGE', default='',
-                                          help='Return WARNING if response time is outside RANGE.')
-        self.argument_parser.add_argument('-c', '--critical', metavar='RANGE', default='',
-                                          help='Return CRITICAL if response time is outside RANGE.')
+        self.argument_parser.add_argument(
+            '-s', '--server', default=None,
+            help='Use a specific DNS server for executing the check. Defaults to system DNS '
+                 + 'resolvers if not specified.'
+        )
+        self.argument_parser.add_argument(
+            '-q', '--query-name', required=True,
+            help='The query name which should be queried by using domain name resolution.'
+        )
+        self.argument_parser.add_argument(
+            '-T', '--rd-type', required=True,
+            help='The record type which should be queried, e.g.: SOA, NS, A, AAAA'
+        )
+        self.argument_parser.add_argument(
+            '-t', '--timeout', required=True, type=float, etavar='TIMEOUT',
+            help='Abort the query and return CRITICAL when query takes longer than TIMEOUT.'
+        )
+        self.argument_parser.add_argument(
+            '-w', '--warning', metavar='RANGE', default='',
+            help='Return WARNING if response time is outside RANGE.'
+        )
+        self.argument_parser.add_argument(
+            '-c', '--critical', metavar='RANGE', default='',
+            help='Return CRITICAL if response time is outside RANGE.'
+        )
         self.exclude_from_kwargs += ('warning', 'critical')
 
     def instantiate_check(self) -> nagiosplugin.Check:
         return nagiosplugin.Check(
             Dns(**self.keyword_arguments),
+
             nagiosplugin.ScalarContext(
                 name='response_time',
                 warning=self.arguments.get('warning'),
                 critical=self.arguments.get('critical')
             ),
+
             ExceptionContext(),
+
             DnsSummary(self.arguments.get('server'))
         )
 

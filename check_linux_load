@@ -67,23 +67,30 @@ class LoadSummary(nagiosplugin.Summary):
 
 class LoadPlugin(NagiosPlugin):
     def declare_arguments(self) -> None:
-        self.argument_parser.add_argument('-w', '--warning', metavar='RANGE', default='',
-                                          help='Return WARNING if load is outside RANGE.')
-        self.argument_parser.add_argument('-c', '--critical', metavar='RANGE', default='',
-                                          help='Return CRITICAL if load is outside RANGE.')
-        self.argument_parser.add_argument('--per-cpu', action='store_true', default=False,
-                                          help='Show load averages per CPU by dividing averages '
-                                               + 'through CPU count.')
+        self.argument_parser.add_argument(
+            '-w', '--warning', metavar='RANGE', default='',
+            help='Return WARNING if load is outside RANGE.'
+        )
+        self.argument_parser.add_argument(
+            '-c', '--critical', metavar='RANGE', default='',
+            help='Return CRITICAL if load is outside RANGE.'
+        )
+        self.argument_parser.add_argument(
+            '--per-cpu', action='store_true', default=False,
+            help='Show load averages per CPU by dividing averages through CPU count.'
+        )
         self.exclude_from_kwargs += ('warning', 'critical')
 
     def instantiate_check(self) -> nagiosplugin.Check:
         return nagiosplugin.Check(
             Load(**self.keyword_arguments),
+
             nagiosplugin.ScalarContext(
                 name='load',
                 warning=self.arguments.get('warning'),
                 critical=self.arguments.get('critical')
             ),
+
             LoadSummary(self.arguments.get('per_cpu'))
         )
 

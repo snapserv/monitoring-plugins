@@ -65,10 +65,14 @@ class UptimeContext(nagiosplugin.Context):
 
 class UptimePlugin(NagiosPlugin):
     def declare_arguments(self):
-        self.argument_parser.add_argument('-w', '--warning', metavar='RANGE', default='',
-                                          help='Return WARNING if response time is outside RANGE.')
-        self.argument_parser.add_argument('-c', '--critical', metavar='RANGE', default='',
-                                          help='Return CRITICAL if response time is outside RANGE.')
+        self.argument_parser.add_argument(
+            '-w', '--warning', metavar='RANGE', default='',
+            help='Return WARNING if response time is outside RANGE.'
+        )
+        self.argument_parser.add_argument(
+            '-c', '--critical', metavar='RANGE', default='',
+            help='Return CRITICAL if response time is outside RANGE.'
+        )
         self.exclude_from_kwargs += ('warning', 'critical')
 
     def instantiate_check(self):
