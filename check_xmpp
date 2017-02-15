@@ -15,9 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-import copy
 import logging
-import argparse
 import socket
 import ssl
 import os
@@ -28,7 +26,7 @@ from xml.sax.handler import ContentHandler, feature_namespaces
 
 import nagiosplugin
 from defusedxml.sax import make_parser
-from shared.common import DaysValidContext, ExceptionContext, CommaSeparatedSummary
+from shared.common import DaysValidContext, ExceptionContext, CommaSeparatedSummary, NagiosPlugin
 
 LOGGER = logging.getLogger('nagiosplugin')
 
@@ -94,7 +92,7 @@ class XmppResponseHandler(ContentHandler):
             self.starttls = True
             LOGGER.info('XMPP server offers StartTLS.')
         elif self.incoming_elements[-2] == (NS_IETF_XMPP_TLS, 'starttls') and name == (
-        NS_IETF_XMPP_TLS, 'required'):
+                NS_IETF_XMPP_TLS, 'required'):
             self.tls_required = True
             LOGGER.info('XMPP server requires the other side to use StartTLS.')
         elif name == (NS_JABBER_CAPS, 'c'):
@@ -341,69 +339,98 @@ class Xmpp(nagiosplugin.Resource):
         yield nagiosplugin.Metric('certificate_days_left', self.certificate_days_left, uom='d')
 
 
-def parse_arguments(excluded_kwargs=()):
-    argp = argparse.ArgumentParser(description=__doc__)
+class XmppPlugin(NagiosPlugin):
+    def declare_arguments(self):
+        self.argument_parser.add_argument(
+            '-s', '--server', required=True,
+            help='Specifies the XMPP server address / domain which should be checked.'
+        )
+        self.argument_parser.add_argument(
+            '-p', '--port', type=int,
+            help='Optionally specifies the XMPP port, defaults to TCP 5222 (C2S) / TCP 5269 (S2S).'
+        )
+        self.argument_parser.add_argument(
+            '-H', '--host', required=True,
+            help='Specifies the XMPP host which should be used.'
+        )
+        self.argument_parser.add_argument(
+            '--starttls', action='store_true',
+            help='Whether to use StartTLS when connecting.'
+        )
+        self.argument_parser.add_argument(
+            '--no-check-certificates', dest='check_certificates',
+            default=True, action='store_false',
+            help='Do not check whether the XMPP server certificate is valid.'
+        )
+        self.argument_parser.add_argument(
+            '--ca-roots',
+            help='Path to a file or directory where CA certificates can be found.'
+        )
+        self.argument_parser.add_argument(
+            '-w', '--warning', metavar='SECONDS', default='',
+            help='Return warning if connection setup takes longer than SECONDS'
+        )
+        self.argument_parser.add_argument(
+            '-c', '--critical', metavar='SECONDS', default='',
+            help='Return critical if connection setup takes longer than SECONDS'
+        )
+        self.argument_parser.add_argument(
+            '--warning-days', dest='warning_days', type=int, default=0, metavar='DAYS',
+            help='Return warning if the remaining certificate lifetime in days is '
+                 + 'shorter than DAYS.'
+        )
+        self.argument_parser.add_argument(
+            '--critical-days', dest='critical_days', type=int, default=0, metavar='DAYS',
+            help='Return critical if the remaining certificate lifetime in days is '
+                 + 'shorter than DAYS.'
+        )
 
-    argp.add_argument('-s', '--server', required=True,
-                      help='Specifies the XMPP server address / domain which should be checked.')
-    argp.add_argument('-p', '--port', type=int,
-                      help='Optionally specifies the XMPP port, defaults to TCP 5222 (XMPP C2S)' +
-                           '/ TCP 5269 (XMPP S2S).')
-    argp.add_argument('-H', '--host', required=True,
-                      help='Specifies the XMPP host which should be used.')
-    argp.add_argument('--starttls', action='store_true',
-                      help='Whether to use StartTLS when connecting.')
-    argp.add_argument('--no-check-certificates', dest='check_certificates', default=True,
-                      action='store_false',
-                      help='Do not check whether the XMPP server certificate is valid.')
-    argp.add_argument('--ca-roots',
-                      help='Path to a file or directory where CA certificates can be found.')
-    argp.add_argument('-w', '--warning', metavar='SECONDS', default='',
-                      help='Return warning if connection setup takes longer than SECONDS')
-    argp.add_argument('-c', '--critical', metavar='SECONDS', default='',
-                      help='Return critical if connection setup takes longer than SECONDS')
-    argp.add_argument('--warning-days', dest='warning_days', type=int, default=0, metavar='DAYS',
-                      help='Return warning if the remaining certificate lifetime in days is '
-                           'shorter than DAYS.')
-    argp.add_argument('--critical-days', dest='critical_days', type=int, default=0, metavar='DAYS',
-                      help='Return critical if the remaining certificate lifetime in days is '
-                           'shorter than DAYS.')
-    argp.add_argument('-v', '--verbose', action='count', default=0,
-                      help='Increase output verbosity (use up to 3 times)')
+        use_s2s = self.argument_parser.add_mutually_exclusive_group()
+        use_s2s.add_argument(
+            '--s2s', dest='use_s2s', action='store_true',
+            help='Server to Server (S2S)'
+        )
+        use_s2s.add_argument(
+            '--c2s', dest='use_s2s', action='store_false',
+            help='Client to Server (C2S)'
+        )
 
-    use_s2s = argp.add_mutually_exclusive_group()
-    use_s2s.add_argument('--s2s', dest='use_s2s', action='store_true',
-                         help='Server to Server (S2S)')
-    use_s2s.add_argument('--c2s', dest='use_s2s', action='store_false',
-                         help='Client to Server (C2S)')
+        use_ipv6 = self.argument_parser.add_mutually_exclusive_group()
+        use_ipv6.add_argument(
+            '-6', dest='use_ipv6', action='store_true',
+            help='Enforce usage of IPv6'
+        )
+        use_ipv6.add_argument(
+            '-4', dest='use_ipv6', action='store_false',
+            help='Enforce usage of IPv4'
+        )
 
-    use_ipv6 = argp.add_mutually_exclusive_group()
-    use_ipv6.add_argument('-6', dest='use_ipv6', action='store_true', help='Enforce usage of IPv6')
-    use_ipv6.add_argument('-4', dest='use_ipv6', action='store_false', help='Enforce usage of IPv4')
+        self.exclude_from_kwargs += ('warning', 'critical', 'warning_days', 'critical_days')
 
-    args = argp.parse_args()
-    kwargs = vars(copy.deepcopy(args))
-    for arg in excluded_kwargs:
-        kwargs.pop(arg)
+    def instantiate_check(self):
+        return nagiosplugin.Check(
+            Xmpp(**self.keyword_arguments),
 
-    return args, kwargs
+            nagiosplugin.ScalarContext(
+                name='time',
+                warning=self.arguments.get('warning'),
+                critical=self.arguments.get('critical'),
+                fmt_metric='Request took {value}{uom}'
+            ),
 
+            DaysValidContext(
+                name='certificate_days_left',
+                warning_days=self.arguments.get('warning_days'),
+                critical_days=self.arguments.get('critical_days'),
+                check_lifetime=self.arguments.get('check_certificates'),
+                fmt_metric='Certificate valid for {value} days'
+            ),
 
-@nagiosplugin.guarded()
-def main():
-    args, kwargs = parse_arguments(
-        excluded_kwargs=('verbose', 'warning', 'critical', 'warning_days', 'critical_days'))
-    check = nagiosplugin.Check(Xmpp(**kwargs),
-                               nagiosplugin.ScalarContext('time', args.warning, args.critical,
-                                                          fmt_metric='Request took {value}{uom}'),
-                               DaysValidContext('certificate_days_left',
-                                                warning_days=args.warning_days,
-                                                critical_days=args.critical_days,
-                                                check_lifetime=args.check_certificates,
-                                                fmt_metric='Certificate valid for {value} days'),
-                               ExceptionContext(), CommaSeparatedSummary())
-    check.main(verbose=args.verbose)
+            ExceptionContext(),
+
+            CommaSeparatedSummary()
+        )
 
 
 if __name__ == '__main__':
-    main()
+    XmppPlugin().execute()
