@@ -16,11 +16,11 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import logging
-import argparse
 import math
 from datetime import timedelta
 
 import nagiosplugin
+from shared.common import NagiosPlugin
 
 LOGGER = logging.getLogger('nagiosplugin')
 
@@ -63,20 +63,24 @@ class UptimeContext(nagiosplugin.Context):
             return self.result_cls(nagiosplugin.Ok, None, metric)
 
 
-@nagiosplugin.guarded()
-def main():
-    argp = argparse.ArgumentParser(description=__doc__)
-    argp.add_argument('-w', '--warning', metavar='RANGE', default='',
-                      help='Return warning if uptime is outside RANGE (specified in minutes)')
-    argp.add_argument('-c', '--critical', metavar='RANGE', default='',
-                      help='Return critical if uptime is outside RANGE (specified in minutes)')
-    argp.add_argument('-v', '--verbose', action='count', default=0,
-                      help='Increase output verbosity (use up to 3 times)')
-    args = argp.parse_args()
+class UptimePlugin(NagiosPlugin):
+    def declare_arguments(self):
+        self.argument_parser.add_argument('-w', '--warning', metavar='RANGE', default='',
+                                          help='Return WARNING if response time is outside RANGE.')
+        self.argument_parser.add_argument('-c', '--critical', metavar='RANGE', default='',
+                                          help='Return CRITICAL if response time is outside RANGE.')
+        self.exclude_from_kwargs += ('warning', 'critical')
 
-    check = nagiosplugin.Check(Uptime(), UptimeContext(args.warning, args.critical))
-    check.main(verbose=args.verbose)
+    def instantiate_check(self):
+        return nagiosplugin.Check(
+            Uptime(),
+
+            UptimeContext(
+                warning=self.arguments.get('warning'),
+                critical=self.arguments.get('critical')
+            )
+        )
 
 
 if __name__ == '__main__':
-    main()
+    UptimePlugin().execute()
