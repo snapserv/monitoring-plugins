@@ -23,6 +23,7 @@ from enum import Enum
 from select import select
 from datetime import datetime
 from xml.sax.handler import ContentHandler, feature_namespaces
+from _ssl import CERT_NONE, CERT_REQUIRED
 
 import nagiosplugin
 from defusedxml.sax import make_parser
@@ -250,9 +251,9 @@ class Xmpp(nagiosplugin.Resource):
         context = ssl.create_default_context()
         if not self.check_certificates:
             context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
+            context.verify_mode = CERT_NONE
         else:
-            context.verify_mode = ssl.CERT_REQUIRED
+            context.verify_mode = CERT_REQUIRED
             if self.ca_roots:
                 if os.path.isfile(self.ca_roots):
                     kwargs = {'cafile': self.ca_roots}
