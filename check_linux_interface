@@ -1,0 +1,73 @@
+#!/usr/bin/env python
+# SnapServ/monitoring-plugins - Simple and reliable Nagios / Icinga plugins
+# Copyright (C) 2016 SnapServ - Pascal Mathis
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+import logging
+import pyroute2
+
+import nagiosplugin
+from shared.common import NagiosPlugin, ExceptionContext
+
+LOGGER = logging.getLogger('nagiosplugin')
+
+
+class Interface(nagiosplugin.Resource):
+    def __init__(self, name):
+        self._name = name
+
+    def probe(self):
+        with pyroute2.IPDB() as ipdb:
+            if self._name in ipdb.interfaces:
+                return nagiosplugin.Metric('state', ipdb.interfaces[self._name].operstate)
+            else:
+                return nagiosplugin.Metric('exception', 'Interface does not exist: %s' % self._name)
+
+
+class InterfaceStateContext(nagiosplugin.Context):
+    def __init__(self, name):
+        super(InterfaceStateContext, self).__init__(name, fmt_metric=self.fmt_interface_state)
+
+    @staticmethod
+    def fmt_interface_state(metric, _):
+        return 'State is %s' % metric.value
+
+    def evaluate(self, metric, resource):
+        interface_state = str(metric.value)
+        if interface_state == 'UP':
+            return self.result_cls(nagiosplugin.Ok, None, metric)
+        else:
+            return self.result_cls(nagiosplugin.Critical, None, metric)
+
+
+class InterfacePlugin(NagiosPlugin):
+    def declare_arguments(self) -> None:
+        self.argument_parser.add_argument(
+            '-name', '--name', required=True,
+            help='Specifies the name of the network interface which should be checked.'
+        )
+
+    def instantiate_check(self) -> nagiosplugin.Check:
+        return nagiosplugin.Check(
+            Interface(**self.keyword_arguments),
+
+            InterfaceStateContext('state'),
+
+            ExceptionContext()
+        )
+
+
+if __name__ == '__main__':
+    InterfacePlugin().execute()
