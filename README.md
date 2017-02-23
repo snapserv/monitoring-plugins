@@ -180,4 +180,4 @@ object CheckCommand "xmpp" {	import "plugin-check-command"
 
 ## Copyright
 
-Copyright &copy; 2016 SnapServ - Pascal Mathis. All rights reserved.
+Copyright &copy; 2016 - 2017 SnapServ Mathis. All rights reserved.
