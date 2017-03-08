@@ -199,6 +199,7 @@ class ShrikeProtocolDetailParser:
     RE_IMPORT_LIMIT = re.compile('^\s*Import limit:\s+(?P<value>\d+)$')
     RE_RECEIVE_LIMIT = re.compile('^\s*Receive limit:\s+(?P<value>\d+)$')
     RE_EXPORT_LIMIT = re.compile('^\s*Export limit:\s+(?P<value>\d+)$')
+    RE_LAST_ERROR = re.compile('^\s*Last error:\s+(?P<value>.+)$')
     RE_ROUTE_STATS = re.compile('^\s*Routes:\s+(?P<imported>\d+) imported, (?:(?P<filtered>\d+) '
                                 + 'filtered, )?(?P<exported>\d+) exported, (?P<preferred>\d+) '
                                 + 'preferred$')
@@ -222,6 +223,7 @@ class ShrikeProtocolDetailParser:
             'import_limit': ShrikeProtocolDetailParser._import_limit,
             'receive_limit': ShrikeProtocolDetailParser._receive_limit,
             'export_limit': ShrikeProtocolDetailParser._export_limit,
+            'last_error': ShrikeProtocolDetailParser._last_error,
 
             'route_stats': ShrikeProtocolDetailParser._route_stats,
             'route_change_stats': ShrikeProtocolDetailParser._route_change_stats,
@@ -263,6 +265,11 @@ class ShrikeProtocolDetailParser:
         return match.group('value') if match else None
 
     @staticmethod
+    def _last_error(result_line):
+        match = re.match(ShrikeProtocolDetailParser.RE_LAST_ERROR, result_line)
+        return match.group('value') if match else None
+
+    @staticmethod
     def _route_stats(result_line):
         match = re.match(ShrikeProtocolDetailParser.RE_ROUTE_STATS, result_line)
         if match:
@@ -270,7 +277,7 @@ class ShrikeProtocolDetailParser:
                 'imported': match.group('imported'),
                 'exported': match.group('exported'),
                 'preferred': match.group('preferred'),
-                'filtered': match.group('filtered') or 0
+                'filtered': match.group('filtered')
             }
         else:
             return None

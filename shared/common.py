@@ -125,3 +125,13 @@ class DaysValidContext(nagiosplugin.Context):
         if self.check_lifetime and metric.value is not None:
             return nagiosplugin.Performance(self.name, metric.value, '')
         return None
+
+
+class SelectableSeverityContext(nagiosplugin.Context):
+    def __init__(self, name, is_critical):
+        super().__init__(name, fmt_metric=self.fmt_metric)
+        self._failure_state = nagiosplugin.Critical if is_critical else nagiosplugin.Warn
+
+    @staticmethod
+    def fmt_metric(metric, context):
+        return None
