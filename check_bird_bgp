@@ -19,7 +19,7 @@ import logging
 import math
 
 import nagiosplugin
-from shared.common import NagiosPlugin, SelectableSeverityContext
+from shared.common import NagiosPlugin, SelectableSeverityContext, ExpectedZeroCountContext
 from shared.shrike import Shrike
 
 LOGGER = logging.getLogger('nagiosplugin')
@@ -76,22 +76,6 @@ class BgpStateContext(SelectableSeverityContext):
             return self.result_cls(nagiosplugin.Ok, None, metric)
         else:
             return self.result_cls(self._failure_state, None, metric)
-
-
-class ExpectedZeroCountContext(nagiosplugin.Context):
-    def __init__(self, name, format_string, suppressed=False):
-        self._suppressed = suppressed
-        self._format_string = format_string
-        super().__init__(name, fmt_metric=self.fmt_metric)
-
-    def fmt_metric(self, metric, context):
-        return self._format_string % int(metric.value)
-
-    def evaluate(self, metric, resource):
-        if metric.value > 0 and not self._suppressed:
-            return self.result_cls(nagiosplugin.Warn, None, metric)
-        else:
-            return self.result_cls(nagiosplugin.Ok, None, metric)
 
 
 class BgpPlugin(NagiosPlugin):

@@ -135,3 +135,22 @@ class SelectableSeverityContext(nagiosplugin.Context):
     @staticmethod
     def fmt_metric(metric, context):
         return None
+
+
+class ExpectedZeroCountContext(nagiosplugin.Context):
+    def __init__(self, name, format_string, suppressed=False):
+        self._suppressed = suppressed
+        self._format_string = format_string
+        super().__init__(name, fmt_metric=self.fmt_metric)
+
+    def fmt_metric(self, metric, context):
+        return self._format_string % int(metric.value)
+
+    def evaluate(self, metric, resource):
+        if metric.value > 0 and not self._suppressed:
+            return self.result_cls(nagiosplugin.Warn, None, metric)
+        else:
+            return self.result_cls(nagiosplugin.Ok, None, metric)
+
+    def performance(self, metric, resource):
+        return nagiosplugin.Performance(label=self.name, value=metric.value, min=0)
