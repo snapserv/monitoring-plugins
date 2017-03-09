@@ -9,6 +9,7 @@
 
 - [Introduction](#introduction)
 - [Overview](#overview)
+- [Changelog](#changelog)
 - [Copyright](#copyright)
 
 ## Introduction
@@ -64,6 +65,12 @@ As of today, the following monitoring plugins exist:
 - **check_xmpp**: Checks a XMPP server by testing the whole connection setup
   according to the official XMPP protocol specifications. Also supports StartTLS
   and certificate expiry checks, if desired.
+
+## Changelog
+```
+1.0.0 (2017-03-09)
+    Initial release of ssmp (SnapServ Monitoring Plugins)
+```
 
 ## Copyright
 
