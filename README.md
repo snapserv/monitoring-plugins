@@ -1,7 +1,7 @@
 # SnapServ Monitoring Plugins
 
 [![License](http://img.shields.io/badge/license-GPL--3.0+-blue.svg)](https://github.com/SnapServ/monitoring-plugins/LICENSE.txt)
-[![Python Compatibility](http://img.shields.io/badge/python_compatibility-3.3--3.5-brightgreen.svg)](#)
+[![Python Compatibility](http://img.shields.io/badge/python_compatibility-3.3_--_3.6-brightgreen.svg)](#)
 [![GitHub issues](https://img.shields.io/github/issues/SnapServ/monitoring-plugins.svg)](https://github.com/SnapServ/monitoring-plugins/issues)
 [![Python Compatibility](http://img.shields.io/badge/copyright-SnapServ_Mathis-lightgrey.svg)](#)
 
@@ -17,7 +17,7 @@
 Icinga plugins. Project goals include:
 
 - No unnecessary dependencies - keep it simple, stupid
-- Compatibility with Python v3.3 - v3.5
+- Compatibility with Python v3.3 - v3.6
 - Clean code with sane error checking
 - Usage of *nagiosplugin* library, to keep everything pretty and consistent
 
