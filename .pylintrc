@@ -1,0 +1,6 @@
+[MASTER]
+disable=missing-docstring, locally-disabled, bad-continuation, redefined-variable-type, no-member,
+        too-many-instance-attributes, too-few-public-methods, too-many-arguments
+
+[REPORTS]
+reports=no

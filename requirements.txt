@@ -1,0 +1,7 @@
+defusedxml==0.4.1
+dnspython==1.15.0
+enum34==1.1.6
+nagiosplugin==1.2.4
+pyroute2==0.4.13
+six==1.10.0
+typing==3.5.3.0

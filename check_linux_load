@@ -1,0 +1,99 @@
+#!/usr/bin/env python
+# SnapServ/monitoring-plugins - Simple and reliable Nagios / Icinga plugins
+# Copyright (C) 2016 - 2017 SnapServ Mathis
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+import logging
+import subprocess
+from typing import Generator  # pylint: disable=unused-import
+
+import nagiosplugin
+from shared.common import NagiosPlugin
+
+LOGGER = logging.getLogger('nagiosplugin')
+
+
+class Load(nagiosplugin.Resource):
+    def __init__(self, per_cpu: bool) -> None:
+        self.per_cpu = per_cpu  # type: bool
+
+    @staticmethod
+    def cpu_count() -> int:
+        LOGGER.info('Counting CPUs with "nproc"')
+        cpu_count = int(subprocess.check_output(['nproc']))
+        LOGGER.debug('Found %d CPUs in total', cpu_count)
+        return cpu_count
+
+    def probe(self) -> Generator[nagiosplugin.Metric, None, None]:
+        # Read the load averages from the proc filesystem
+        LOGGER.info('Reading load averages from /proc/loadavg')
+        with open('/proc/loadavg') as file:
+            load_averages = file.readline().split(' ')[0:3]
+        LOGGER.debug('Raw load averages are %s', load_averages)
+
+        # Divide the averages by the CPU count if 'per_cpu' is active
+        cpu_count = self.cpu_count() if self.per_cpu else 1
+        load_averages = [float(load_average) / cpu_count for load_average in load_averages]
+
+        # Yield the last minute/5 minutes/15 minutes averages
+        for index, period in enumerate([1, 5, 15]):
+            yield nagiosplugin.Metric('load%d' % period, load_averages[index], min=0,
+                                      context='load')
+
+
+class LoadSummary(nagiosplugin.Summary):
+    def __init__(self, per_cpu: bool) -> None:
+        self.per_cpu = per_cpu  # type: bool
+
+    def ok(self, results: nagiosplugin.Results) -> str:
+        qualifier = 'per cpu ' if self.per_cpu else ''
+        return 'loadavg %sis %s' % (
+            qualifier,
+            ', '.join(str(results[index].metric) for index in ['load1', 'load5', 'load15'])
+        )
+
+
+class LoadPlugin(NagiosPlugin):
+    def declare_arguments(self) -> None:
+        self.argument_parser.add_argument(
+            '-w', '--warning', metavar='RANGE', default='',
+            help='Return WARNING if load is outside RANGE.'
+        )
+        self.argument_parser.add_argument(
+            '-c', '--critical', metavar='RANGE', default='',
+            help='Return CRITICAL if load is outside RANGE.'
+        )
+        self.argument_parser.add_argument(
+            '--per-cpu', action='store_true', default=False,
+            help='Show load averages per CPU by dividing averages through CPU count.'
+        )
+        self.exclude_from_kwargs += ('warning', 'critical')
+
+    def instantiate_check(self) -> nagiosplugin.Check:
+        return nagiosplugin.Check(
+            Load(**self.keyword_arguments),
+
+            nagiosplugin.ScalarContext(
+                name='load',
+                warning=self.arguments.get('warning'),
+                critical=self.arguments.get('critical')
+            ),
+
+            LoadSummary(self.arguments.get('per_cpu'))
+        )
+
+
+if __name__ == '__main__':
+    LoadPlugin().execute()

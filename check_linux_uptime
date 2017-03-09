@@ -1,0 +1,90 @@
+#!/usr/bin/env python
+# SnapServ/monitoring-plugins - Simple and reliable Nagios / Icinga plugins
+# Copyright (C) 2016 - 2017 SnapServ Mathis
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+import logging
+import math
+from datetime import timedelta
+
+import nagiosplugin
+from shared.common import NagiosPlugin
+
+LOGGER = logging.getLogger('nagiosplugin')
+
+
+class Uptime(nagiosplugin.Resource):
+    def probe(self):
+        LOGGER.info('Reading system uptime from /proc/uptime')
+        with open('/proc/uptime') as file:
+            raw_uptime = file.readline().split(' ')[0]
+        LOGGER.debug('Raw system uptime is %s', raw_uptime)
+
+        uptime_seconds = round(float(raw_uptime))
+        yield nagiosplugin.Metric('uptime', uptime_seconds, min=0, uom='s', context='uptime')
+
+
+class UptimeContext(nagiosplugin.Context):
+    def __init__(self, warning=None, critical=None):
+        super(UptimeContext, self).__init__('uptime', fmt_metric=self.fmt_uptime_metric)
+        self.warning = nagiosplugin.Range(warning)
+        self.critical = nagiosplugin.Range(critical)
+
+    @staticmethod
+    def fmt_uptime_metric(metric, _):
+        return 'uptime is %s' % timedelta(seconds=metric.value)
+
+    @staticmethod
+    def fmt_range(rng):
+        if rng.end == float('inf'):
+            return 'less than %d minutes' % rng.start
+        else:
+            return 'outside range of %s to %s minutes' % (rng.start, rng.end)
+
+    def evaluate(self, metric, resource):
+        uptime_minutes = math.floor(metric.value / 60)
+        if not self.critical.match(uptime_minutes):
+            return self.result_cls(nagiosplugin.Critical, self.fmt_range(self.critical), metric)
+        elif not self.warning.match(uptime_minutes):
+            return self.result_cls(nagiosplugin.Warn, self.fmt_range(self.warning), metric)
+        else:
+            return self.result_cls(nagiosplugin.Ok, None, metric)
+
+
+class UptimePlugin(NagiosPlugin):
+    def declare_arguments(self):
+        self.argument_parser.add_argument(
+            '-w', '--warning', metavar='RANGE', default='',
+            help='Return WARNING if response time is outside RANGE.'
+        )
+        self.argument_parser.add_argument(
+            '-c', '--critical', metavar='RANGE', default='',
+            help='Return CRITICAL if response time is outside RANGE.'
+        )
+        self.exclude_from_kwargs += ('warning', 'critical')
+
+    def instantiate_check(self):
+        return nagiosplugin.Check(
+            Uptime(),
+
+            UptimeContext(
+                warning=self.arguments.get('warning'),
+                critical=self.arguments.get('critical')
+            )
+        )
+
+
+if __name__ == '__main__':
+    UptimePlugin().execute()

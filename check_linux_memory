@@ -1,0 +1,137 @@
+#!/usr/bin/env python
+# SnapServ/monitoring-plugins - Simple and reliable Nagios / Icinga plugins
+# Copyright (C) 2016 - 2017 SnapServ Mathis
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+import logging
+import re
+
+import nagiosplugin
+from shared.common import NagiosPlugin
+
+LOGGER = logging.getLogger('nagiosplugin')
+
+
+class Memory(nagiosplugin.Resource):
+    def __init__(self, cache_as_free=False):
+        self.cache_as_free = cache_as_free
+
+    @staticmethod
+    def get_statistics():
+        LOGGER.info('Gathering system memory information from "/proc/meminfo"')
+        re_parser = re.compile(r'^(?P<key>\S*):\s*(?P<value>\d*)\s*kB')
+        result = dict()
+
+        for line in open('/proc/meminfo'):
+            match = re_parser.match(line)
+            if match:
+                key, value = match.groups(['key', 'value'])
+                LOGGER.debug('Parsed meminfo line: %s => %s', key, value)
+                result[key] = int(value)
+            else:
+                LOGGER.debug('Ignored unparsable line: ' + line.strip())
+
+        return result
+
+    def probe(self):
+        stats = self.get_statistics()
+        free_memory = float(stats['MemFree'] + (stats['Cached'] if self.cache_as_free else 0))
+        free_percentage = round(free_memory / stats['MemTotal'] * 100, 2)
+
+        return [nagiosplugin.Metric('free_percentage', free_percentage, min=0, max=100, uom='%'),
+                nagiosplugin.Metric('active', stats['Active'], min=0, uom='KB'),
+                nagiosplugin.Metric('inactive', stats['Inactive'], min=0, uom='KB'),
+                nagiosplugin.Metric('buffers', stats['Buffers'], min=0, uom='KB'),
+                nagiosplugin.Metric('cached', stats['Cached'], min=0, uom='KB'),
+                nagiosplugin.Metric('total', stats['MemTotal'], min=0, uom='KB')]
+
+
+class MemorySummary(nagiosplugin.Summary):
+    @staticmethod
+    def divide_size(size):
+        threshold = 100
+        if size > pow(1024, 3) * threshold:
+            return [round(size / pow(1024, 3), 2), 'T']
+        elif size > pow(1024, 2) * threshold:
+            return [round(size / pow(1024, 2), 2), 'G']
+        elif size > pow(1024, 1) * threshold:
+            return [round(size / pow(1024, 1), 2), 'M']
+        else:
+            return [int(size), 'K']
+
+    def ok(self, results):
+        args = [results['free_percentage'].metric.value]
+        args.extend(self.divide_size(results['total'].metric.value))
+        args.extend(self.divide_size(results['active'].metric.value))
+        args.extend(self.divide_size(results['inactive'].metric.value))
+        args.extend(self.divide_size(results['buffers'].metric.value))
+        args.extend(self.divide_size(results['cached'].metric.value))
+
+        return '%d%% Free - Total:%d%s Active:%d%s Inactive:%d%s Buffers:%d%s Cached:%d%s' % tuple(
+            args)
+
+
+class MemoryPlugin(NagiosPlugin):
+    def declare_arguments(self):
+        self.argument_parser.add_argument(
+            '-w', '--warning', metavar='RANGE', default='',
+            help='Return WARNING if response time is outside RANGE.'
+        )
+        self.argument_parser.add_argument(
+            '-c', '--critical', metavar='RANGE', default='',
+            help='Return CRITICAL if response time is outside RANGE.'
+        )
+        self.argument_parser.add_argument(
+            '-f', '--cache-as-free', action='store_true', default=False,
+            help='Count cache memory as free/unused memory when calculating percentage values.'
+        )
+        self.exclude_from_kwargs += ('warning', 'critical')
+
+    def instantiate_check(self):
+        return nagiosplugin.Check(
+            Memory(**self.keyword_arguments),
+
+            nagiosplugin.ScalarContext(
+                name='free_percentage',
+                warning=self.arguments.get('warning'),
+                critical=self.arguments.get('critical')
+            ),
+
+            nagiosplugin.ScalarContext(
+                name='active'
+            ),
+
+            nagiosplugin.ScalarContext(
+                name='inactive'
+            ),
+
+            nagiosplugin.ScalarContext(
+                name='buffers'
+            ),
+
+            nagiosplugin.ScalarContext(
+                name='cached'
+            ),
+
+            nagiosplugin.Context(
+                name='total'
+            ),
+
+            MemorySummary()
+        )
+
+
+if __name__ == '__main__':
+    MemoryPlugin().execute()

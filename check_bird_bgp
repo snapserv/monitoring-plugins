@@ -1,0 +1,138 @@
+#!/usr/bin/env python
+# SnapServ/monitoring-plugins - Simple and reliable Nagios / Icinga plugins
+# Copyright (C) 2016 - 2017 SnapServ Mathis
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+import logging
+import math
+
+import nagiosplugin
+from shared.common import NagiosPlugin, SelectableSeverityContext, ExpectedZeroCountContext
+from shared.shrike import Shrike
+
+LOGGER = logging.getLogger('nagiosplugin')
+
+
+class Bgp(nagiosplugin.Resource):
+    def __init__(self, socket_path, protocol):
+        self._data = None
+        self._protocol = protocol
+        self._shrike = Shrike(socket_path)
+
+    def probe(self):
+        self._data = self._shrike.get_protocol(self._protocol)[self._protocol]
+        yield nagiosplugin.Metric('state', self._data['bgp_state'])
+
+        route_stats = self._data.get('route_stats', None)
+        if route_stats and route_stats['imported'] and route_stats['filtered']:
+            # Fetch the amount of imported and filtered routes and add them together for further
+            # route based analysis / monitoring.
+            imported_route_count = int(route_stats['imported'])
+            filtered_route_count = int(route_stats['filtered'])
+            used_route_count = imported_route_count + filtered_route_count
+
+            # Return the current and filtered route count as performance data
+            yield nagiosplugin.Metric(name='imported_route_count', value=imported_route_count, min=0)
+            yield nagiosplugin.Metric(name='filtered_route_count', value=filtered_route_count, min=0)
+
+            # If imported and filtered route statistics are available and a receive limit was set,
+            # we can calculate the current usage of the configured prefix limit in percent.
+            if 'receive_limit' in self._data:
+                max_prefix_count = int(self._data['receive_limit'])
+                prefix_limit_usage = math.ceil(used_route_count / max_prefix_count * 100)
+                yield nagiosplugin.Metric(name='route_limit_usage', value=prefix_limit_usage,
+                                          min=0, max=100, uom='%')
+
+    @property
+    def data(self):
+        return self._data
+
+
+class BgpStateContext(SelectableSeverityContext):
+    @staticmethod
+    def fmt_metric(metric, context):
+        return 'Session has state %s' % str(metric.value).upper()
+
+    def evaluate(self, metric, resource):
+        last_error = resource.data.get('last_error', None)
+
+        if last_error is not None:
+            return self.result_cls(self._failure_state, last_error, metric)
+        elif metric.value == 'down':
+            return self.result_cls(nagiosplugin.Ok, 'Protocol disabled', metric)
+        elif metric.value == 'established':
+            return self.result_cls(nagiosplugin.Ok, None, metric)
+        else:
+            return self.result_cls(self._failure_state, None, metric)
+
+
+class BgpPlugin(NagiosPlugin):
+    def declare_arguments(self):
+        self.argument_parser.add_argument(
+            '-s', '--socket-path', required=True,
+            help='Specifies the path to the BIRD UNIX control socket. Can be either IPv4 or IPv6.'
+        )
+        self.argument_parser.add_argument(
+            '-p', '--protocol', required=True,
+            help='Specifies the protocol name of the BGP session in BIRD which should be checked.'
+        )
+        self.argument_parser.add_argument(
+            '-c', '--critical', action='store_true', default=False,
+            help='Returns CRITICAL for the service state if a problem with the BGP session occurs, '
+                 + 'instead of using the default severity of WARNING.'
+        )
+        self.argument_parser.add_argument(
+            '--warn-route-filtered', action='store_true', default=False,
+            help='Returns WARNING (independent of the peer "critical" flag) if any routes have '
+                 'been filtered by BIRD and not imported to the routing table.'
+        )
+        self.argument_parser.add_argument(
+            '--warn-route-limit-usage', metavar='RANGE', default='',
+            help='Specifies the valid usage RANGE in percent when the session has receive limits '
+                 + 'applied to it. ("receive limit XXX action YYY"). Always results in WARNING '
+                 + 'if current usage is too low or too high.'
+        )
+
+        self.exclude_from_kwargs += ('critical', 'warn_route_filtered', 'warn_route_limit_usage')
+
+    def instantiate_check(self):
+        return nagiosplugin.Check(
+            Bgp(**self.keyword_arguments),
+
+            BgpStateContext(
+                name='state',
+                is_critical=self.arguments.get('critical')
+            ),
+
+            nagiosplugin.ScalarContext(
+                name='imported_route_count'
+            ),
+
+            ExpectedZeroCountContext(
+                name='filtered_route_count',
+                format_string='Session has %d filtered routes',
+                suppressed=not self.arguments.get('warn_route_filtered')
+            ),
+
+            nagiosplugin.ScalarContext(
+                name='route_limit_usage',
+                fmt_metric='Route limit usage is {valueunit}',
+                warning=self.arguments.get('warn_route_limit_usage')
+            )
+        )
+
+
+if __name__ == '__main__':
+    BgpPlugin().execute()
