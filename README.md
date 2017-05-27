@@ -68,6 +68,9 @@ As of today, the following monitoring plugins exist:
 
 ## Changelog
 ```
+1.0.1 (2017-05-27)
+    Updated check_linux_interface plugin to avoid OOM issues
+
 1.0.0 (2017-03-09)
     Initial release of ssmp (SnapServ Monitoring Plugins)
 ```
