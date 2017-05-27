@@ -16,7 +16,6 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import logging
-import pyroute2
 
 import nagiosplugin
 from shared.common import NagiosPlugin, ExceptionContext
@@ -29,11 +28,11 @@ class Interface(nagiosplugin.Resource):
         self._name = name
 
     def probe(self):
-        with pyroute2.IPDB() as ipdb:
-            if self._name in ipdb.interfaces:
-                return nagiosplugin.Metric('state', ipdb.interfaces[self._name].operstate)
-            else:
-                return nagiosplugin.Metric('exception', 'Interface does not exist: %s' % self._name)
+        try:
+            with open('/sys/class/net/%s/operstate' % self._name) as file:
+                return nagiosplugin.Metric('state', file.read().strip().upper())
+        except EnvironmentError:
+            return nagiosplugin.Metric('exception', 'Interface does not exist: %s' % self._name)
 
 
 class InterfaceStateContext(nagiosplugin.Context):
