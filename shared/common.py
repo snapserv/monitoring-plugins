@@ -154,3 +154,27 @@ class ExpectedZeroCountContext(nagiosplugin.Context):
 
     def performance(self, metric, resource):
         return nagiosplugin.Performance(label=self.name, value=metric.value, min=0)
+
+
+class OptionalExactMatchContext(nagiosplugin.Context):
+    def __init__(self, name, reference, format_string=None, is_critical=False):
+        self._reference = reference
+        self._format_string = format_string
+        self._failure_state = nagiosplugin.Critical if is_critical else nagiosplugin.Warn
+        super().__init__(name, fmt_metric=self.fmt_metric)
+
+    def fmt_metric(self, metric, context):
+        if self._format_string:
+            value = metric.value if metric.value else 'UNKNOWN'
+            return self._format_string % value
+        else:
+            return metric.value
+
+    def evaluate(self, metric, resource):
+        if self._reference:
+            if metric.value and metric.value == self._reference:
+                return self.result_cls(nagiosplugin.Ok, None, metric)
+            else:
+                return self.result_cls(self._failure_state, None, metric)
+        else:
+            return self.result_cls(nagiosplugin.Ok, None, metric)

@@ -18,21 +18,48 @@
 import logging
 
 import nagiosplugin
-from shared.common import NagiosPlugin, ExceptionContext
+from shared.common import NagiosPlugin, ExceptionContext, OptionalExactMatchContext
 
 LOGGER = logging.getLogger('nagiosplugin')
 
 
 class Interface(nagiosplugin.Resource):
+    SYSFS_PATH_OPERSTATE = '/sys/class/net/%s/operstate'
+    SYSFS_PATH_SPEED = '/sys/class/net/%s/speed'
+    SYSFS_PATH_DUPLEX = '/sys/class/net/%s/duplex'
+
     def __init__(self, name):
         self._name = name
 
     def probe(self):
+        operstate = self.get_operstate()
+        if operstate:
+            yield nagiosplugin.Metric('state', operstate)
+            yield nagiosplugin.Metric('speed', self.get_speed())
+            yield nagiosplugin.Metric('duplex', self.get_duplex())
+        else:
+            yield nagiosplugin.Metric('exception', 'Interface does not exist: %s' % self._name)
+
+    def get_operstate(self):
         try:
-            with open('/sys/class/net/%s/operstate' % self._name) as file:
-                return nagiosplugin.Metric('state', file.read().strip().upper())
+            with open(self.SYSFS_PATH_OPERSTATE % self._name) as file:
+                return file.read().strip().upper()
         except EnvironmentError:
-            return nagiosplugin.Metric('exception', 'Interface does not exist: %s' % self._name)
+            return None
+
+    def get_speed(self):
+        try:
+            with open(self.SYSFS_PATH_SPEED % self._name) as file:
+                return int(file.read().strip())
+        except EnvironmentError:
+            return None
+
+    def get_duplex(self):
+        try:
+            with open(self.SYSFS_PATH_DUPLEX % self._name) as file:
+                return file.read().strip().lower()
+        except EnvironmentError:
+            return None
 
 
 class InterfaceStateContext(nagiosplugin.Context):
@@ -51,20 +78,56 @@ class InterfaceStateContext(nagiosplugin.Context):
             return self.result_cls(nagiosplugin.Critical, None, metric)
 
 
+class InterfaceSummary(nagiosplugin.Summary):
+    def ok(self, results):
+        fmt = 'State:%s Speed:%s Duplex:%s'
+        speed = results['speed'].metric.value or 'N/A'
+        duplex = results['duplex'].metric.value or 'N/A'
+        return fmt % (results['state'].metric.value, speed, duplex)
+
+    def problem(self, results):
+        return super().problem(results)
+
+
 class InterfacePlugin(NagiosPlugin):
     def declare_arguments(self) -> None:
         self.argument_parser.add_argument(
-            '-name', '--name', required=True,
+            '-n', '--name', required=True,
             help='Specifies the name of the network interface which should be checked.'
         )
+        self.argument_parser.add_argument(
+            '-s', '--speed', metavar='SPEED', type=int, default=None,
+            help='Return WARNING if interface speed in Mbps does not match SPEED.'
+        )
+        self.argument_parser.add_argument(
+            '-d', '--duplex', metavar='DUPLEX', default=None,
+            help='Return WARNING if interface duplex does not match DUPLEX.'
+        )
+        self.exclude_from_kwargs += ('speed', 'duplex')
 
     def instantiate_check(self) -> nagiosplugin.Check:
         return nagiosplugin.Check(
             Interface(**self.keyword_arguments),
 
-            InterfaceStateContext('state'),
+            InterfaceStateContext(
+                name='state'
+            ),
 
-            ExceptionContext()
+            OptionalExactMatchContext(
+                name='speed',
+                reference=self.arguments.get('speed'),
+                format_string='Speed is %s'
+            ),
+
+            OptionalExactMatchContext(
+                name='duplex',
+                reference=self.arguments.get('duplex'),
+                format_string='Duplex is %s'
+            ),
+
+            ExceptionContext(),
+
+            InterfaceSummary()
         )
 
 
